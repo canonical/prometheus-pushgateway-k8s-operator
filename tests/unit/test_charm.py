@@ -21,9 +21,7 @@ class TestCharm(unittest.TestCase):
     def setUp(self, *_):
         self.container_name: str = "prometheus-pushgateway"
         self.harness = Harness(PrometheusPushgatewayK8SOperatorCharm)
-        patcher = patch.object(
-            PrometheusPushgatewayK8SOperatorCharm, "_get_service_version"
-        )
+        patcher = patch.object(PrometheusPushgatewayK8SOperatorCharm, "_get_service_version")
         self.mock_version = patcher.start()
         self.mock_version.return_value = "2.4.0"
         self.addCleanup(patcher.stop)
