@@ -23,8 +23,8 @@ async def test_build_and_deploy(ops_test: OpsTest):
     """
     # Build and deploy charm from local source folder
     charm = await ops_test.build_charm(".")
-    image = METADATA["resources"]["prometheus-pushgateway-image"]["upstream-source"]
-    resources = {"prometheus-pushgateway-image": image}
+    image = METADATA["resources"]["pushgateway-image"]["upstream-source"]
+    resources = {"pushgateway-image": image}
 
     # Deploy the charm and wait for active/idle status
     await asyncio.gather(
