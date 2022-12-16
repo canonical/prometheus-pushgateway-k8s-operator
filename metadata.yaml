@@ -1,0 +1,37 @@
+# Copyright 2022 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+name: prometheus-pushgateway-k8s
+assumes:
+  - k8s-api
+
+display-name: Prometheus Pushgateway Charmed Operator
+summary: Prometheus Pushgateway for Kubernetes clusters.
+
+description: |
+  Prometheus Pushgateway is a service that allows ephemeral and batch jobs to expose their metrics to Prometheus.
+
+  This charm deploys and operates Prometheus Pushgateway on Kubernetes clusters
+
+containers:
+  pushgateway:
+    resource: prometheus-pushgateway-image
+    mounts:
+      - storage: prometheus-pushgateway-store
+        location: /data
+
+storage:
+  pushgateway-store:
+    type: filesystem
+    description: Mount point in which Prometheus Pushgateway will store data
+
+resources:
+  pushgateway-image:
+    type: oci-image
+    description: OCI image for Prometheus Pushgateway
+    # Included for simplicity in integration tests
+    upstream-source: docker.io/prom/pushgateway:latest
+
+provides:
+  metrics-endpoint:
+    interface: prometheus_scrape
