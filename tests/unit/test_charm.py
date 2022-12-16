@@ -4,11 +4,10 @@
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
 import unittest
-from unittest.mock import PropertyMock, patch
+from unittest.mock import patch
 
 import ops.testing
-from ops.model import ActiveStatus, BlockedStatus, Container, WaitingStatus
-from ops.pebble import ProtocolError
+from ops.model import ActiveStatus
 from ops.testing import Harness
 
 from charm import PrometheusPushgatewayK8SOperatorCharm
@@ -36,7 +35,7 @@ class TestCharm(unittest.TestCase):
                 "pushgateway": {
                     "override": "replace",
                     "summary": "pushgateway process",
-                    "command": f"/bin/pushgateway --persistence.file=/data/metrics",
+                    "command": "/bin/pushgateway --persistence.file=/data/metrics",
                     "startup": "enabled",
                 }
             },
