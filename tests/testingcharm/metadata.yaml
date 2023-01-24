@@ -1,0 +1,11 @@
+name: testingcharm
+display-name: Pushgateway Integration Test Charm
+summary: A charm to test integration with the Prometheus Pushgateway charm
+
+description: |
+  Charm that just integrates with the Prometheus Pushgateway charm and provides an
+  action to send metrics.
+
+requires:
+  pushgateway:
+    interface: pushgateway

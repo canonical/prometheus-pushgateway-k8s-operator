@@ -1,0 +1,10 @@
+send-metric:
+  description: Send a metric to the Prometheus Pushgateway
+  params:
+    name:
+      type: string
+      description: The metric name
+    value:
+      type: string
+      description: The metric value (float)
+  required: [name, value]

@@ -1,4 +1,4 @@
-# Copyright 2022 Canonical Ltd.
+# Copyright 2022-2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
 name: pushgateway-k8s
@@ -35,3 +35,5 @@ resources:
 provides:
   metrics-endpoint:
     interface: prometheus_scrape
+  push-endpoint:
+    interface: pushgateway

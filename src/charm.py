@@ -7,13 +7,15 @@
 
 """A Juju Charmed Operator for Prometheus Pushgateway."""
 
+import json
 import logging
+import socket
 from typing import Optional
 
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from deepdiff import DeepDiff  # type: ignore
-from ops.charm import CharmBase
+from ops.charm import CharmBase, HookEvent
 from ops.main import main
 from ops.model import ActiveStatus, WaitingStatus
 from parse import search  # type: ignore
@@ -49,7 +51,18 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
 
         self.framework.observe(self.on.pushgateway_pebble_ready, self._on_pebble_ready)
 
-    def _on_pebble_ready(self, event):
+        self.framework.observe(self.on.push_endpoint_relation_created, self._on_push_relation)
+        self.framework.observe(self.on.push_endpoint_relation_changed, self._on_push_relation)
+
+    def _on_push_relation(self, event: HookEvent) -> None:
+        """Send the push endpoint info."""
+        relation_data = event.relation.data[self.app]
+        relation_data['push-endpoint'] = json.dumps({
+            'hostname': socket.getfqdn(),
+            'port': self._http_listen_port,
+        })
+
+    def _on_pebble_ready(self, event: HookEvent) -> None:
         """Set version and configure."""
         self._set_service_version()
 
@@ -94,7 +107,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
 
         return False
 
-    def _build_pebble_layer(self):
+    def _build_pebble_layer(self) -> None:
         """Build the pebble layer structure."""
         return {
             "summary": "prometheus pushgateway layer",
