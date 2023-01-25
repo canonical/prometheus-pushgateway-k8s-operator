@@ -14,8 +14,7 @@ import json
 import logging
 
 import requests
-
-from ops.charm import CharmBase, ActionEvent, HookEvent
+from ops.charm import ActionEvent, CharmBase, HookEvent
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus

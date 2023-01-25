@@ -74,7 +74,8 @@ async def test_prometheus_integration(ops_test: OpsTest):
     # related to the pushgateway charm
     main_apps = [APP_NAME, prometheus_app_name]
     await ops_test.model.wait_for_idle(
-        apps=main_apps, status="active", wait_for_units=1, idle_period=90)
+        apps=main_apps, status="active", wait_for_units=1, idle_period=90
+    )
     await ops_test.model.wait_for_idle(apps=[tester_name], status="blocked", wait_for_units=1)
     logger.info("Pushgateway and Prometheus active, testing charm waiting for the relation")
 
@@ -90,9 +91,7 @@ async def test_prometheus_integration(ops_test: OpsTest):
         ops_test.model.add_relation(
             f"{APP_NAME}:metrics-endpoint", f"{prometheus_app_name}:metrics-endpoint"
         ),
-        ops_test.model.add_relation(
-            f"{tester_name}:pushgateway", f"{APP_NAME}:push-endpoint"
-        ),
+        ops_test.model.add_relation(f"{tester_name}:pushgateway", f"{APP_NAME}:push-endpoint"),
     )
     logger.info("Relations issued")
 

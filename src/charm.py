@@ -14,10 +14,10 @@ from typing import Optional
 
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
-from deepdiff import DeepDiff  # type: ignore
 from ops.charm import CharmBase, HookEvent
 from ops.main import main
 from ops.model import ActiveStatus, WaitingStatus
+from ops.pebble import Layer
 from parse import search  # type: ignore
 
 # By default, Pushgateway does not persist metrics, but we can specify a file in which
@@ -57,10 +57,12 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
     def _on_push_relation(self, event: HookEvent) -> None:
         """Send the push endpoint info."""
         relation_data = event.relation.data[self.app]
-        relation_data['push-endpoint'] = json.dumps({
-            'hostname': socket.getfqdn(),
-            'port': self._http_listen_port,
-        })
+        relation_data["push-endpoint"] = json.dumps(
+            {
+                "hostname": socket.getfqdn(),
+                "port": self._http_listen_port,
+            }
+        )
 
     def _on_pebble_ready(self, event: HookEvent) -> None:
         """Set version and configure."""
@@ -96,31 +98,33 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
 
         Returns: True if Pebble layer was added, otherwise False.
         """
-        current_layer = self._container.get_plan().to_dict()
+        current_layer = self._container.get_plan()
         new_layer = self._build_pebble_layer()
 
-        if "services" not in current_layer or DeepDiff(
-            current_layer["services"], new_layer["services"], ignore_order=True
+        if "services" not in current_layer.to_dict() or (
+            current_layer.services != new_layer.services
         ):
             self._container.add_layer(self._name, new_layer, combine=True)
             return True
 
         return False
 
-    def _build_pebble_layer(self) -> None:
+    def _build_pebble_layer(self) -> Layer:
         """Build the pebble layer structure."""
-        return {
-            "summary": "prometheus pushgateway layer",
-            "description": "pebble config layer for prometheus pushgateway",
-            "services": {
-                "pushgateway": {
-                    "override": "replace",
-                    "summary": "pushgateway process",
-                    "command": f"/bin/pushgateway --persistence.file={METRICS_PATH}",
-                    "startup": "enabled",
-                }
-            },
-        }
+        return Layer(
+            {
+                "summary": "prometheus pushgateway layer",
+                "description": "pebble config layer for prometheus pushgateway",
+                "services": {
+                    "pushgateway": {
+                        "override": "replace",
+                        "summary": "pushgateway process",
+                        "command": f"/bin/pushgateway --persistence.file={METRICS_PATH}",
+                        "startup": "enabled",
+                    }
+                },
+            }
+        )
 
     def _get_service_version(self) -> Optional[str]:
         """Get the version of the running service."""
