@@ -124,7 +124,7 @@ async def test_prometheus_integration(ops_test: OpsTest, updated_charmlib: None)
     test_metric = "some_testing_metric"
     action = await tester_unit.run_action("send-metric", name=test_metric, value="3.14")
     result = (await action.wait()).results
-    assert result["ok"] is True, result
+    assert result["ok"] == "True", result
     logger.info("Metric sent to the Pushgateway")
 
     for i in range(20):
