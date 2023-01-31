@@ -10,49 +10,47 @@ A charm to test integration with the Prometheus Pushgateway charm. It just integ
 with the Prometheus Pushgateway charm and provides an action to send metrics there.
 """
 
-import json
 import logging
 
-import requests
-from ops.charm import ActionEvent, CharmBase, HookEvent
+from ops.charm import ActionEvent, CharmBase
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus
+
+from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayInterface
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
 
 
 class TestingcharmCharm(CharmBase):
+
     """Charm the service."""
 
     _stored = StoredState()
 
     def __init__(self, *args):
         super().__init__(*args)
-        self._stored.set_default(pushgateway_url=None)
+        self._stored.set_default(pushgateway_available=False)
 
         self.framework.observe(self.on.install, self._on_install)
-        self.framework.observe(self.on.pushgateway_relation_created, self._on_push_relation)
-        self.framework.observe(self.on.pushgateway_relation_changed, self._on_push_relation)
         self.framework.observe(self.on.send_metric_action, self._on_send_metric)
+
+        self.ppi = PrometheusPushgatewayInterface(self)
+        self.framework.observe(self.ppi.on.pushgateway_available, self._on_pushgateway_available)
 
     def _on_install(self, _) -> None:
         """Installed, needs the relation."""
         self.unit.status = BlockedStatus("needs the relation with the pushgateway")
 
-    def _on_push_relation(self, event: HookEvent) -> None:
-        """Receive the push endpoint information."""
-        raw = event.relation.data[event.app].get("push-endpoint")
-        if raw is not None:
-            logger.info("Received push endpoint information: %r", raw)
-            info = json.loads(raw)
-            self._stored.pushgateway_url = "http://{hostname}:{port}/".format_map(info)
-            self.unit.status = ActiveStatus()
+    def _on_pushgateway_available(self, _) -> None:
+        """Flag the Pushgateway as available."""
+        self._stored.pushgateway_available = True
+        self.unit.status = ActiveStatus()
 
     def _on_send_metric(self, event: ActionEvent) -> None:
-        if self._stored.pushgateway_url is None:
-            event.fail("Testing charm not properly related to the Prometheus Pushgateway.")
+        if not self._stored.pushgateway_available:
+            event.fail("The Prometheus Pushgateway service is not yet available.")
             return
 
         name = event.params["name"].strip()
@@ -65,16 +63,16 @@ class TestingcharmCharm(CharmBase):
             event.fail("The metric value must be a float.")
             return
 
-        payload = f"{name} {value}\n"
-        try:
-            payload_bytes = payload.encode("ascii")
-        except UnicodeEncodeError:
+        if not name.isascii():
             event.fail("The metric name must be ASCII.")
             return
 
-        post_url = self._stored.pushgateway_url + "metrics/job/testjob"
-        resp = requests.post(post_url, data=payload_bytes)
-        event.set_results({"status-code": str(resp.status_code), "content": resp.text})
+        try:
+            self.ppi.send_metric(name, value)
+        except Exception as exc:
+            event.set_results({"ok": False, "error": str(exc)})
+        else:
+            event.set_results({"ok": True})
 
 
 if __name__ == "__main__":  # pragma: nocover

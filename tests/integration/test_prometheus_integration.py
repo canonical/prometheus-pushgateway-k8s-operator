@@ -3,6 +3,7 @@
 
 import asyncio
 import logging
+import shutil
 from pathlib import Path
 from typing import List
 
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 APP_NAME = METADATA["name"]
+CHARMLIB_PATH = Path("lib") / "charms" / "prometheus_pushgateway_k8s" / "v0" / "pushgateway.py"
 
 
 class Prometheus:
@@ -39,14 +41,31 @@ class Prometheus:
         return result["data"] if result["status"] == "success" else []
 
 
+@pytest.fixture
+def updated_charmlib():
+    """Provide (and clean) the Pushgateway's charmlib for the testing charm."""
+    testingcharm_path = Path("tests") / "testingcharm"
+    dest_charmlib = testingcharm_path / CHARMLIB_PATH
+    dest_charmlib.parent.mkdir(parents=True)
+    try:
+        dest_charmlib.hardlink_to(CHARMLIB_PATH)
+        yield
+    finally:
+        shutil.rmtree(dest_charmlib.parent)
+
+
 @pytest.mark.abort_on_fail
-async def test_prometheus_integration(ops_test: OpsTest):
+async def test_prometheus_integration(ops_test: OpsTest, updated_charmlib: None):
     """Validate the integration between the Pushgateway and Prometheous."""
     prometheus_app_name = "prometheus"
     tester_name = "testingcharm"
     apps = [APP_NAME, prometheus_app_name, tester_name]
+
+    # build the pushgateway charm (main service)
     pushgateway_charm = await ops_test.build_charm(".")
-    tester_charm = await ops_test.build_charm("tests/testingcharm")
+
+    # build the testing charm, but before link the current library so it always has it updated
+    tester_charm = await ops_test.build_charm(Path("tests") / "testingcharm")
 
     image = METADATA["resources"]["pushgateway-image"]["upstream-source"]
     resources = {"pushgateway-image": image}
@@ -105,7 +124,7 @@ async def test_prometheus_integration(ops_test: OpsTest):
     test_metric = "some_testing_metric"
     action = await tester_unit.run_action("send-metric", name=test_metric, value="3.14")
     result = (await action.wait()).results
-    assert result["status-code"] == "200"
+    assert result["ok"] is True, result
     logger.info("Metric sent to the Pushgateway")
 
     for i in range(20):
