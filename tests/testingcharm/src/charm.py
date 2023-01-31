@@ -12,19 +12,17 @@ with the Prometheus Pushgateway charm and provides an action to send metrics the
 
 import logging
 
+from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayInterface
 from ops.charm import ActionEvent, CharmBase
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus
-
-from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayInterface
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
 
 
 class TestingcharmCharm(CharmBase):
-
     """Charm the service."""
 
     _stored = StoredState()

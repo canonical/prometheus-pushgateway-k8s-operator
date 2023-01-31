@@ -9,7 +9,6 @@ from unittest.mock import patch
 import pytest
 import requests
 import responses
-
 from ops.testing import Harness
 
 from tests.testingcharm.src.charm import TestingcharmCharm
@@ -46,11 +45,14 @@ def test_pushgateway_relation_with_data(harness):
     assert ppi._stored.pushgateway_url == "http://hostname.test:9876/"
 
 
-@pytest.mark.parametrize("name", [
-    "moño",  # not ascii
-    123,  # not a number
-    "",  # empty
-])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "moño",  # not ascii
+        123,  # not a number
+        "",  # empty
+    ],
+)
 @responses.activate
 def test_sendmetric_bad_name_input(harness, name):
     """Validate the name input to ensure the URL is properly built."""
@@ -61,10 +63,13 @@ def test_sendmetric_bad_name_input(harness, name):
     assert str(cm.value) == "The name must be a non-empty ASCII string."
 
 
-@pytest.mark.parametrize("value", [
-    "a string",  # not a number
-    (4 + 5j),  # only scalar values
-])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "a string",  # not a number
+        (4 + 5j),  # only scalar values
+    ],
+)
 @responses.activate
 def test_sendmetric_bad_value_input(harness, value):
     """Validate the value input to ensure the URL is properly built."""
@@ -75,11 +80,14 @@ def test_sendmetric_bad_value_input(harness, value):
     assert str(cm.value) == "The metric value must be an integer or float number."
 
 
-@pytest.mark.parametrize("name, value, expected_body", [
-    ("testmetric", 3.14, b"testmetric 3.14\n"),
-    ("testmetric", 314, b"testmetric 314\n"),
-    ("test_metric", 3.14, b"test_metric 3.14\n"),
-])
+@pytest.mark.parametrize(
+    "name, value, expected_body",
+    [
+        ("testmetric", 3.14, b"testmetric 3.14\n"),
+        ("testmetric", 314, b"testmetric 314\n"),
+        ("test_metric", 3.14, b"test_metric 3.14\n"),
+    ],
+)
 @responses.activate
 def test_sendmetric_ok(harness, name, value, expected_body):
     """The metric was sent ok."""
