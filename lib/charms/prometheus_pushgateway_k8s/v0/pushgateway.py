@@ -45,10 +45,10 @@ an exception if something is wrong (that error should be logged or informed to t
 
 ## Waiting for Pushgateway
 
-When your charm is deployed but the relation is still not added to the Prometheus Pushgateway
-the metrics could not be sent.
+When your charm is deployed but the relation is still not added to the Prometheus Pushgateway,
+metrics cannot not be sent.
 
-For robustness the charm should only send metrics only after the `pushgateway_available` event
+For robustness you should only begin to send metrics after the `pushgateway_available` event
 is received.
 
 The following is a bare charm that holds a flag for when the Pushgateway is available, which is
