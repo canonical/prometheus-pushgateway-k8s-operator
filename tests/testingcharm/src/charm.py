@@ -14,9 +14,8 @@ import logging
 
 from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayInterface
 from ops.charm import ActionEvent, CharmBase
-from ops.framework import StoredState
 from ops.main import main
-from ops.model import ActiveStatus, BlockedStatus
+from ops.model import ActiveStatus
 
 # Log messages can be retrieved using juju debug-log
 logger = logging.getLogger(__name__)
@@ -25,30 +24,21 @@ logger = logging.getLogger(__name__)
 class TestingcharmCharm(CharmBase):
     """Charm the service."""
 
-    _stored = StoredState()
-
     def __init__(self, *args):
         super().__init__(*args)
-        self._stored.set_default(pushgateway_available=False)
 
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.send_metric_action, self._on_send_metric)
 
         self.ppi = PrometheusPushgatewayInterface(self)
-        self.framework.observe(self.ppi.on.pushgateway_available, self._on_pushgateway_available)
 
     def _on_install(self, _) -> None:
-        """Installed, needs the relation."""
-        self.unit.status = BlockedStatus("needs the relation with the pushgateway")
-
-    def _on_pushgateway_available(self, _) -> None:
-        """Flag the Pushgateway as available."""
-        self._stored.pushgateway_available = True
+        """Installed."""
         self.unit.status = ActiveStatus()
 
     def _on_send_metric(self, event: ActionEvent) -> None:
-        if not self._stored.pushgateway_available:
-            event.fail("The Prometheus Pushgateway service is not yet available.")
+        if not self.ppi.is_ready:
+            event.fail("The Prometheus Pushgateway service is not currently available.")
             return
 
         name = event.params["name"].strip()

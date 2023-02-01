@@ -48,26 +48,13 @@ an exception if something is wrong (that error should be logged or informed to t
 When your charm is deployed but the relation is still not added to the Prometheus Pushgateway,
 metrics cannot not be sent.
 
-For robustness you should only begin to send metrics after the `pushgateway_available` event
-is received.
-
-The following is a bare charm that holds a flag for when the Pushgateway is available, which is
-set to True when the mentioned event arrives:
+For robustness you should only send metrics when the interface is ready:
 
 ```
-class ExampleCharm(CharmBase):
-
-    _stored = StoredState()
-
-    def __init__(self, *args):
-        super().__init__(*args)
-        self._stored.set_default(pushgateway_available=False)
-
-        self.ppi = PrometheusPushgatewayInterface(self)
-        self.framework.observe(self.ppi.on.pushgateway_available, self._on_pushgateway_available)
-
-    def _on_pushgateway_available(self, _):
-        self._stored.pushgateway_available = True
+self.ppi = PrometheusPushgatewayInterface(self)
+...
+if self.ppi.is_ready():
+    self.ppi.send_metric("test_metric", 3.141592)
 ```
 """
 
@@ -77,7 +64,7 @@ from typing import Union
 
 import requests
 from ops.charm import CharmBase, HookEvent
-from ops.framework import EventBase, EventSource, Object, ObjectEvents, StoredState
+from ops.framework import Object, StoredState
 
 logger = logging.getLogger(__name__)
 
@@ -95,21 +82,10 @@ LIBPATCH = 1
 PYDEPS = ["requests"]
 
 
-class _PushgatewayAvailableEvent(EventBase):
-    """Event emitted when the Prometheus Pushgateway is available to receive metrics."""
-
-
-class _Events(ObjectEvents):
-    """Events for the interface."""
-
-    pushgateway_available = EventSource(_PushgatewayAvailableEvent)
-
-
 class PrometheusPushgatewayInterface(Object):
     """Interface for the Prometheus Pushgateway."""
 
     _stored = StoredState()
-    on = _Events()
 
     def __init__(self, charm: CharmBase):
         """Construct the interface for the Prometheus Pushgateway.
@@ -122,19 +98,34 @@ class PrometheusPushgatewayInterface(Object):
         super().__init__(charm, None)
         self._stored.set_default(pushgateway_url=None)
 
-        self.framework.observe(charm.on.pushgateway_relation_created, self._on_push_relation)
-        self.framework.observe(charm.on.pushgateway_relation_changed, self._on_push_relation)
+        self.framework.observe(
+            charm.on.pushgateway_relation_created, self._on_push_relation_changed
+        )
+        self.framework.observe(
+            charm.on.pushgateway_relation_changed, self._on_push_relation_changed
+        )
+        self.framework.observe(
+            charm.on.pushgateway_relation_broken, self._on_push_relation_removed
+        )
 
-    def _on_push_relation(self, event: HookEvent) -> None:
+    @property
+    def is_ready(self):
+        """Return if the service is ready to send metrics."""
+        return self._stored.pushgateway_url is not None
+
+    def _on_push_relation_changed(self, event: HookEvent) -> None:
         """Receive the push endpoint information."""
         raw = event.relation.data[event.app].get("push-endpoint")
         if raw is not None:
             logger.info("Received push endpoint information: %r", raw)
             info = json.loads(raw)
             self._stored.pushgateway_url = "http://{hostname}:{port}/".format_map(info)
-            self.on.pushgateway_available.emit()
 
-    def send_metric(self, name: str, value: Union[float, int]):
+    def _on_push_relation_removed(self, event: HookEvent) -> None:
+        """Clear the push endpoint information."""
+        self._stored.pushgateway_url = None
+
+    def send_metric(self, name: str, value: Union[float, int], ignore_error: bool = False):
         """Send a metric to the Pushgateway."""
         if not isinstance(name, str) or not name.isascii() or not name:
             raise ValueError("The name must be a non-empty ASCII string.")
@@ -145,4 +136,5 @@ class PrometheusPushgatewayInterface(Object):
         post_url = self._stored.pushgateway_url + "metrics/job/testjob"
 
         resp = requests.post(post_url, data=payload)
-        resp.raise_for_status()
+        if not ignore_error:
+            resp.raise_for_status()

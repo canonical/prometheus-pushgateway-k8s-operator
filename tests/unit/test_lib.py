@@ -28,21 +28,35 @@ def test_pushgateway_url_default(harness):
     assert ppi._stored.pushgateway_url is None
 
 
-def test_pushgateway_relation_empty(harness):
+def test_pushgateway_relation_changed_empty(harness):
     """No changes when the relation is established without data."""
     ppi = harness.charm.ppi
     harness.add_relation("pushgateway", "remote")
     assert ppi._stored.pushgateway_url is None
+    assert not ppi.is_ready
 
 
-def test_pushgateway_relation_with_data(harness):
-    """The pushgateway is set when the relation is established and has data."""
+def test_pushgateway_relation_changed_with_data(harness):
+    """The pushgateway url is set when the relation is established and has data."""
     ppi = harness.charm.ppi
     payload = {"push-endpoint": json.dumps({"port": "9876", "hostname": "hostname.test"})}
 
     relation_id = harness.add_relation("pushgateway", "remote")
     harness.update_relation_data(relation_id, "remote", payload)
     assert ppi._stored.pushgateway_url == "http://hostname.test:9876/"
+    assert ppi.is_ready
+
+
+def test_pushgateway_relation_broken(harness):
+    """The pushgateway url is cleared if the relation disappears."""
+    ppi = harness.charm.ppi
+    payload = {"push-endpoint": json.dumps({"port": "9876", "hostname": "hostname.test"})}
+    relation_id = harness.add_relation("pushgateway", "remote")
+    harness.update_relation_data(relation_id, "remote", payload)
+    assert ppi.is_ready
+
+    harness.remove_relation(relation_id)
+    assert not ppi.is_ready
 
 
 @pytest.mark.parametrize(
@@ -101,8 +115,8 @@ def test_sendmetric_ok(harness, name, value, expected_body):
 
 
 @responses.activate
-def test_sendmetric_error(harness):
-    """The metric was not sent ok."""
+def test_sendmetric_error_raised(harness):
+    """Error raised because the metric was not sent ok."""
     ppi = harness.charm.ppi
     ppi._stored.pushgateway_url = "http://testhost:8080/"
     responses.post(
@@ -111,3 +125,15 @@ def test_sendmetric_error(harness):
     )
     with pytest.raises(requests.exceptions.HTTPError):
         ppi.send_metric("testmetric", 3.14)
+
+
+@responses.activate
+def test_sendmetric_error_ignored(harness):
+    """The metric was not sent ok but the error is ignored."""
+    ppi = harness.charm.ppi
+    ppi._stored.pushgateway_url = "http://testhost:8080/"
+    responses.post(
+        url="http://testhost:8080/metrics/job/testjob",
+        status=400,
+    )
+    ppi.send_metric("testmetric", 3.14, ignore_error=True)
