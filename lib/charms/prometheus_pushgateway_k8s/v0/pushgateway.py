@@ -53,7 +53,7 @@ For robustness you should only send metrics when the interface is ready:
 ```
 self.ppi = PrometheusPushgatewayInterface(self)
 ...
-if self.ppi.is_ready():
+if self.ppi.is_ready:
     self.ppi.send_metric("test_metric", 3.141592)
 ```
 """
