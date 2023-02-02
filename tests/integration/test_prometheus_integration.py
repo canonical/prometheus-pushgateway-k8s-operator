@@ -56,7 +56,10 @@ def updated_charmlib():
 
 @pytest.mark.abort_on_fail
 async def test_prometheus_integration(
-    ops_test: OpsTest, updated_charmlib: None, pushgateway_charm: Path, tester_charm: Path,
+    ops_test: OpsTest,
+    updated_charmlib: None,
+    pushgateway_charm: Path,
+    tester_charm: Path,
 ):
     """Validate the integration between the Pushgateway and Prometheous."""
     prometheus_app_name = "prometheus"
