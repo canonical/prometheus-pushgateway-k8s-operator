@@ -34,9 +34,9 @@ Just instantiate the object in `__init__` and then use it when desired to send a
 its name and value:
 
 ```
-self.ppi = PrometheusPushgatewayRequirer(self)
+self.pushgateway_requirer = PrometheusPushgatewayRequirer(self)
 ...
-self.ppi.send_metric("test_metric", 3.141592)
+self.pushgateway_requirer.send_metric("test_metric", 3.141592)
 ```
 
 The `send_metric` call will just end quietly if the metric was sent succesfully, or will raise
@@ -51,10 +51,10 @@ metrics cannot not be sent.
 For robustness you should only send metrics when the interface is ready:
 
 ```
-self.ppi = PrometheusPushgatewayRequirer(self)
+self.pushgateway_requirer = PrometheusPushgatewayRequirer(self)
 ...
-if self.ppi.is_ready:
-    self.ppi.send_metric("test_metric", 3.141592)
+if self.pushgateway_requirer.is_ready:
+    self.pushgateway_requirer.send_metric("test_metric", 3.141592)
 ```
 """
 
