@@ -12,7 +12,7 @@ with the Prometheus Pushgateway charm and provides an action to send metrics the
 
 import logging
 
-from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayInterface
+from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayRequirer
 from ops.charm import ActionEvent, CharmBase
 from ops.main import main
 from ops.model import ActiveStatus
@@ -30,14 +30,14 @@ class TestingcharmCharm(CharmBase):
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.send_metric_action, self._on_send_metric)
 
-        self.ppi = PrometheusPushgatewayInterface(self)
+        self.pushgateway_requirer = PrometheusPushgatewayRequirer(self)
 
     def _on_install(self, _) -> None:
         """Installed."""
         self.unit.status = ActiveStatus()
 
     def _on_send_metric(self, event: ActionEvent) -> None:
-        if not self.ppi.is_ready:
+        if not self.pushgateway_requirer.is_ready:
             event.fail("The Prometheus Pushgateway service is not currently available.")
             return
 
@@ -56,7 +56,7 @@ class TestingcharmCharm(CharmBase):
             return
 
         try:
-            self.ppi.send_metric(name, value)
+            self.pushgateway_requirer.send_metric(name, value)
         except Exception as exc:
             event.set_results({"ok": False, "error": str(exc)})
         else:

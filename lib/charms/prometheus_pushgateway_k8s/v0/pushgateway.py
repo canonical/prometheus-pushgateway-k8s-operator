@@ -27,14 +27,14 @@ requires:
 In the source of your charm, first import the interface:
 
 ```
-from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayInterface
+from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayRequirer
 ````
 
 Just instantiate the object in `__init__` and then use it when desired to send a metric, passing
 its name and value:
 
 ```
-self.ppi = PrometheusPushgatewayInterface(self)
+self.ppi = PrometheusPushgatewayRequirer(self)
 ...
 self.ppi.send_metric("test_metric", 3.141592)
 ```
@@ -51,7 +51,7 @@ metrics cannot not be sent.
 For robustness you should only send metrics when the interface is ready:
 
 ```
-self.ppi = PrometheusPushgatewayInterface(self)
+self.ppi = PrometheusPushgatewayRequirer(self)
 ...
 if self.ppi.is_ready:
     self.ppi.send_metric("test_metric", 3.141592)
@@ -60,10 +60,11 @@ if self.ppi.is_ready:
 
 import json
 import logging
+import socket
 from typing import Union
 
 import requests
-from ops.charm import CharmBase, HookEvent
+from ops.charm import CharmBase, RelationEvent
 from ops.framework import Object, StoredState
 
 logger = logging.getLogger(__name__)
@@ -81,9 +82,39 @@ LIBPATCH = 1
 
 PYDEPS = ["requests"]
 
+# the key in the relation data
+RELATION_KEY = "push-endpoint"
 
-class PrometheusPushgatewayInterface(Object):
-    """Interface for the Prometheus Pushgateway."""
+
+class PrometheusPushgatewayProvider(Object):
+    """Provider side for the Prometheus Pushgateway.
+
+    This class is to be used by the Prometheus Pushgateway charm, please use
+    the PrometheusPushgatewayRequirer class if you're bulding a charm and want to
+    use this library to integrate with the Prometheus Pushgateway.
+    """
+
+    def __init__(self, charm: CharmBase, relation_name: str, port: int):
+        super().__init__(charm, relation_name)
+        self.port = port
+        self.app = charm.app
+        events = charm.on[relation_name]
+        self.framework.observe(events.relation_created, self._on_relation_changed)
+        self.framework.observe(events.relation_changed, self._on_relation_changed)
+
+    def _on_relation_changed(self, event: RelationEvent):
+        """Send the push endpoint info."""
+        relation_data = event.relation.data[self.app]
+        relation_data[RELATION_KEY] = json.dumps(
+            {
+                "hostname": socket.getfqdn(),
+                "port": self.port,
+            }
+        )
+
+
+class PrometheusPushgatewayRequirer(Object):
+    """Requirer side for the Prometheus Pushgateway."""
 
     _stored = StoredState()
 
@@ -113,15 +144,16 @@ class PrometheusPushgatewayInterface(Object):
         """Return if the service is ready to send metrics."""
         return self._stored.pushgateway_url is not None
 
-    def _on_push_relation_changed(self, event: HookEvent) -> None:
+    def _on_push_relation_changed(self, event: RelationEvent) -> None:
         """Receive the push endpoint information."""
-        raw = event.relation.data[event.app].get("push-endpoint")
+        print("============== REQ changed", event.relation.data)
+        raw = event.relation.data[event.app].get(RELATION_KEY)
         if raw is not None:
             logger.info("Received push endpoint information: %r", raw)
             info = json.loads(raw)
             self._stored.pushgateway_url = "http://{hostname}:{port}/".format_map(info)
 
-    def _on_push_relation_removed(self, event: HookEvent) -> None:
+    def _on_push_relation_removed(self, event: RelationEvent) -> None:
         """Clear the push endpoint information."""
         self._stored.pushgateway_url = None
 
