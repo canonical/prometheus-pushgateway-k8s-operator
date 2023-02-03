@@ -52,7 +52,7 @@ def test_requirer_pushgateway_relation_changed_empty(testcharm_harness):
     requirer = testcharm_harness.charm.pushgateway_requirer
     testcharm_harness.add_relation("pushgateway", "remote")
     assert requirer._stored.pushgateway_url is None
-    assert not requirer.is_ready
+    assert not requirer.is_ready()
 
 
 def test_requirer_pushgateway_relation_changed_with_data(testcharm_harness):
@@ -63,7 +63,7 @@ def test_requirer_pushgateway_relation_changed_with_data(testcharm_harness):
     relation_id = testcharm_harness.add_relation("pushgateway", "remote")
     testcharm_harness.update_relation_data(relation_id, "remote", payload)
     assert requirer._stored.pushgateway_url == "http://hostname.test:9876/"
-    assert requirer.is_ready
+    assert requirer.is_ready()
 
 
 def test_requirer_pushgateway_relation_broken(testcharm_harness):
@@ -72,10 +72,10 @@ def test_requirer_pushgateway_relation_broken(testcharm_harness):
     payload = {"push-endpoint": json.dumps({"port": "9876", "hostname": "hostname.test"})}
     relation_id = testcharm_harness.add_relation("pushgateway", "remote")
     testcharm_harness.update_relation_data(relation_id, "remote", payload)
-    assert requirer.is_ready
+    assert requirer.is_ready()
 
     testcharm_harness.remove_relation(relation_id)
-    assert not requirer.is_ready
+    assert not requirer.is_ready()
 
 
 @pytest.mark.parametrize(

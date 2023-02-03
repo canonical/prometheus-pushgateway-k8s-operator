@@ -37,7 +37,7 @@ class TestingcharmCharm(CharmBase):
         self.unit.status = ActiveStatus()
 
     def _on_send_metric(self, event: ActionEvent) -> None:
-        if not self.pushgateway_requirer.is_ready:
+        if not self.pushgateway_requirer.is_ready():
             event.fail("The Prometheus Pushgateway service is not currently available.")
             return
 

@@ -62,7 +62,7 @@ For robustness you should only send metrics when the interface is ready:
 ```
 self.pushgateway_requirer = PrometheusPushgatewayRequirer(self)
 ...
-if self.pushgateway_requirer.is_ready:
+if self.pushgateway_requirer.is_ready():
     self.pushgateway_requirer.send_metric("test_metric", 3.141592)
 ```
 """
@@ -145,7 +145,6 @@ class PrometheusPushgatewayRequirer(Object):
         self.framework.observe(events.relation_changed, self._on_push_relation_changed)
         self.framework.observe(events.relation_broken, self._on_push_relation_removed)
 
-    @property
     def is_ready(self):
         """Return if the service is ready to send metrics."""
         return self._stored.pushgateway_url is not None
