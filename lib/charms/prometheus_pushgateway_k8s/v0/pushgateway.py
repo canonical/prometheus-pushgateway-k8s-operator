@@ -3,8 +3,8 @@
 
 r"""Interface library for the Prometheus Pushgateway.
 
-This library wraps the relation endpoint using the `pushgwateway` interface
-and provides a Python API for sending metrics.
+This library wraps a relation endpoint using the `pushgwateway` interface
+and exposes an API for forwarding metrics to Prometheus.
 
 
 ## Getting Started
@@ -13,14 +13,14 @@ To get started using the library, you just need to fetch the library using `char
 
 ```shell
 cd some-charm
-charmcraft fetch-lib charms.prometheus_pushgateway_k8s/v0/pushgateway
+charmcraft fetch-lib charms.prometheus_pushgateway_k8s.v0.pushgateway
 ```
 
 In the `metadata.yaml` of the charm, add the following:
 
 ```yaml
 requires:
-  pushgateway:
+  your-relation-name:
     interface: pushgateway
 ```
 
@@ -30,13 +30,22 @@ In the source of your charm, first import the interface:
 from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayRequirer
 ````
 
-Just instantiate the object in `__init__` and then use it when desired to send a metric, passing
-its name and value:
+Instantiate the object in your charm's `__init__`, like so:
 
 ```
-self.pushgateway_requirer = PrometheusPushgatewayRequirer(self)
-...
-self.pushgateway_requirer.send_metric("test_metric", 3.141592)
+from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayRequirer
+from ops.charm import CharmBase
+
+class MyCharm(CharmBase):
+    def __init__(...):
+         ...
+        self.pushgateway_requirer = PrometheusPushgatewayRequirer(self, "your-relation-name")
+```
+
+Then use it at any moment to send a metric, passing its name and value:
+
+```
+        self.pushgateway_requirer.send_metric("test_metric", 3.141592)
 ```
 
 The `send_metric` call will just end quietly if the metric was sent succesfully, or will raise
@@ -117,26 +126,24 @@ class PrometheusPushgatewayRequirer(Object):
 
     _stored = StoredState()
 
-    def __init__(self, charm: CharmBase):
+    def __init__(self, charm: CharmBase, relation_name: str):
         """Construct the interface for the Prometheus Pushgateway.
 
         Args:
             charm: a `CharmBase` object that manages this
                 `MetricsEndpointProvider` object. Typically, this is
                 `self` in the instantiating class.
+            relation_name: the name of the relation (whatever was used
+                in the `requires` section in `metadata.yaml` for
+                the `pushgateway` interface.
         """
-        super().__init__(charm, None)
+        super().__init__(charm, relation_name)
         self._stored.set_default(pushgateway_url=None)
 
-        self.framework.observe(
-            charm.on.pushgateway_relation_created, self._on_push_relation_changed
-        )
-        self.framework.observe(
-            charm.on.pushgateway_relation_changed, self._on_push_relation_changed
-        )
-        self.framework.observe(
-            charm.on.pushgateway_relation_broken, self._on_push_relation_removed
-        )
+        events = charm.on[relation_name]
+        self.framework.observe(events.relation_created, self._on_push_relation_changed)
+        self.framework.observe(events.relation_changed, self._on_push_relation_changed)
+        self.framework.observe(events.relation_broken, self._on_push_relation_removed)
 
     @property
     def is_ready(self):
