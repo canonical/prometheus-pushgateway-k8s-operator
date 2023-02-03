@@ -62,8 +62,9 @@ import json
 import logging
 import socket
 from typing import Union
+from urllib import request
+from urllib.error import HTTPError
 
-import requests
 from ops.charm import CharmBase, RelationEvent
 from ops.framework import Object, StoredState
 
@@ -79,8 +80,6 @@ LIBAPI = 0
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
 LIBPATCH = 1
-
-PYDEPS = ["requests"]
 
 # the key in the relation data
 RELATION_KEY = "push-endpoint"
@@ -146,7 +145,6 @@ class PrometheusPushgatewayRequirer(Object):
 
     def _on_push_relation_changed(self, event: RelationEvent) -> None:
         """Receive the push endpoint information."""
-        print("============== REQ changed", event.relation.data)
         raw = event.relation.data[event.app].get(RELATION_KEY)
         if raw is not None:
             logger.info("Received push endpoint information: %r", raw)
@@ -167,6 +165,8 @@ class PrometheusPushgatewayRequirer(Object):
         payload = f"{name} {value}\n".encode("ascii")
         post_url = self._stored.pushgateway_url + "metrics/job/testjob"
 
-        resp = requests.post(post_url, data=payload)
-        if not ignore_error:
-            resp.raise_for_status()
+        try:
+            request.urlopen(post_url, data=payload)
+        except HTTPError:
+            if not ignore_error:
+                raise

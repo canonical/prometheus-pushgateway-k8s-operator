@@ -3,12 +3,13 @@
 
 """Tests for the pushgateway.py charm library."""
 
+import io
 import json
 from unittest.mock import patch
+from urllib import response
+from urllib.error import HTTPError
 
 import pytest
-import requests
-import responses
 from ops.testing import Harness
 
 from src.charm import PrometheusPushgatewayK8SOperatorCharm
@@ -81,11 +82,10 @@ def test_requirer_pushgateway_relation_broken(testcharm_harness):
     "name",
     [
         "moño",  # not ascii
-        123,  # not a number
+        123,  # not a string
         "",  # empty
     ],
 )
-@responses.activate
 def test_requirer_sendmetric_bad_name_input(testcharm_harness, name):
     """Validate the name input to ensure the URL is properly built."""
     requirer = testcharm_harness.charm.pushgateway_requirer
@@ -102,7 +102,6 @@ def test_requirer_sendmetric_bad_name_input(testcharm_harness, name):
         (4 + 5j),  # only scalar values
     ],
 )
-@responses.activate
 def test_requirer_sendmetric_bad_value_input(testcharm_harness, value):
     """Validate the value input to ensure the URL is properly built."""
     requirer = testcharm_harness.charm.pushgateway_requirer
@@ -120,38 +119,33 @@ def test_requirer_sendmetric_bad_value_input(testcharm_harness, value):
         ("test_metric", 3.14, b"test_metric 3.14\n"),
     ],
 )
-@responses.activate
 def test_requirer_sendmetric_ok(testcharm_harness, name, value, expected_body):
     """The metric was sent ok."""
     requirer = testcharm_harness.charm.pushgateway_requirer
     requirer._stored.pushgateway_url = "http://testhost:8080/"
-    responses.post(
-        url="http://testhost:8080/metrics/job/testjob",
-    )
-    requirer.send_metric(name, value)
-    assert responses.calls[0].request.body == expected_body
+    expected_url = "http://testhost:8080/metrics/job/testjob"
+    fake_resp = response.addinfourl(io.BytesIO(), {}, expected_url, code=200)
+    with patch("urllib.request.urlopen", return_value=fake_resp) as mock_urlopen:
+        requirer.send_metric(name, value)
+    mock_urlopen.assert_called_with(expected_url, data=expected_body)
 
 
-@responses.activate
 def test_requirer_sendmetric_error_raised(testcharm_harness):
     """Error raised because the metric was not sent ok."""
     requirer = testcharm_harness.charm.pushgateway_requirer
     requirer._stored.pushgateway_url = "http://testhost:8080/"
-    responses.post(
-        url="http://testhost:8080/metrics/job/testjob",
-        status=400,
-    )
-    with pytest.raises(requests.exceptions.HTTPError):
-        requirer.send_metric("testmetric", 3.14)
+    expected_url = "http://testhost:8080/metrics/job/testjob"
+    fake_error = HTTPError(expected_url, 400, "BAD REQUEST", {}, io.BytesIO())
+    with patch("urllib.request.urlopen", side_effect=fake_error):
+        with pytest.raises(HTTPError):
+            requirer.send_metric("testmetric", 3.14)
 
 
-@responses.activate
 def test_requirer_sendmetric_error_ignored(testcharm_harness):
     """The metric was not sent ok but the error is ignored."""
     requirer = testcharm_harness.charm.pushgateway_requirer
     requirer._stored.pushgateway_url = "http://testhost:8080/"
-    responses.post(
-        url="http://testhost:8080/metrics/job/testjob",
-        status=400,
-    )
-    requirer.send_metric("testmetric", 3.14, ignore_error=True)
+    expected_url = "http://testhost:8080/metrics/job/testjob"
+    fake_error = HTTPError(expected_url, 400, "BAD REQUEST", {}, io.BytesIO())
+    with patch("urllib.request.urlopen", side_effect=fake_error):
+        requirer.send_metric("testmetric", 3.14, ignore_error=True)
