@@ -135,12 +135,12 @@ class PrometheusPushgatewayRequirer(Object):
             logger.warning(
                 "Prometheus Pushgateway Requirer not ready: "
                 "charm not related to the Pushgateway service")
-            return
+            return None
         raw_data = relation.data[relation.app].get(RELATION_KEY)
         if raw_data is None:
             logger.warning(
                 "Prometheus Pushgateway Requirer not ready: still no data in the relation")
-            return
+            return None
         data = json.loads(raw_data)
         return "http://{hostname}:{port}/".format_map(data)
 
@@ -155,13 +155,16 @@ class PrometheusPushgatewayRequirer(Object):
         #    https://github.com/prometheus/pushgateway#api
         # TODO: support the more complex cases
 
+        pushgateway_url = self._pushgateway_url
+        if pushgateway_url is None:
+            raise ValueError("The service is not ready.")
         if not isinstance(name, str) or not name.isascii() or not name:
             raise ValueError("The name must be a non-empty ASCII string.")
         if not isinstance(value, (float, int)):
             raise ValueError("The metric value must be an integer or float number.")
 
         payload = f"{name} {value}\n".encode("ascii")
-        post_url = self._pushgateway_url + "metrics/job/testjob"
+        post_url = pushgateway_url + "metrics/job/testjob"
 
         try:
             request.urlopen(post_url, data=payload)

@@ -89,6 +89,13 @@ def test_requirer_pushgateway_relation_broken(testcharm_harness):
     assert not requirer.is_ready()
 
 
+def test_requirer_sendmetric_not_ready(testcharm_harness):
+    """Validate that the requirer is ready."""
+    requirer = testcharm_harness.charm.pushgateway_requirer
+    with pytest.raises(ValueError):
+        requirer.send_metric("testmetric", 3.21)
+
+
 @pytest.mark.parametrize(
     "name",
     [
