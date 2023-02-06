@@ -47,7 +47,7 @@ def related_requirer(testcharm_harness):
 @patch("socket.getfqdn", lambda: "testhost")
 def test_provider_relation(pushgateway_harness):
     """Send connection information when the relation is created."""
-    provider = pushgateway_harness.charm.provider
+    provider = pushgateway_harness.charm.pushgateway_provider
     relation_id = pushgateway_harness.add_relation("push-endpoint", "remote")
     data = pushgateway_harness.get_relation_data(relation_id, "prometheus-pushgateway-k8s")
     assert json.loads(data["push-endpoint"]) == {"hostname": "testhost", "port": provider.port}
@@ -75,6 +75,24 @@ def test_requirer_pushgateway_relation_changed_with_data(testcharm_harness):
     testcharm_harness.update_relation_data(relation_id, "remote", payload)
     assert requirer.is_ready()
     assert requirer._pushgateway_url == "http://hostname.test:9876/"
+
+
+@pytest.mark.parametrize(
+    "payload_content",
+    [
+        "this is not json",  # corrupt
+        json.dumps({"hostname": "hostname.test"}),  # missing port
+        json.dumps({"port": "9876"}),  # missing hostname
+    ],
+)
+def test_requirer_pushgateway_relation_changed_bad_data(testcharm_harness, payload_content):
+    """The pushgateway is not ready even if the relation has data, but corrupt or missing."""
+    requirer = testcharm_harness.charm.pushgateway_requirer
+    payload = {"push-endpoint": payload_content}
+
+    relation_id = testcharm_harness.add_relation("pushgateway", "remote")
+    testcharm_harness.update_relation_data(relation_id, "remote", payload)
+    assert not requirer.is_ready()
 
 
 def test_requirer_pushgateway_relation_broken(testcharm_harness):

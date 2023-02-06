@@ -140,8 +140,20 @@ class PrometheusPushgatewayRequirer(Object):
             logger.warning(
                 "Prometheus Pushgateway Requirer not ready: still no data in the relation")
             return None
-        data = json.loads(raw_data)
-        return "http://{hostname}:{port}/".format_map(data)
+        try:
+            data = json.loads(raw_data)
+        except json.JSONDecodeError:
+            logger.warning(
+                "Prometheus Pushgateway Requirer not ready: corrupt data in the relation")
+            return None
+        try:
+            url = "http://{hostname}:{port}/".format_map(data)
+        except KeyError:
+            logger.warning(
+                "Prometheus Pushgateway Requirer not ready: "
+                "missing mandatory keys in relation data")
+            return None
+        return url
 
     def is_ready(self):
         """Return if the service is ready to send metrics."""
