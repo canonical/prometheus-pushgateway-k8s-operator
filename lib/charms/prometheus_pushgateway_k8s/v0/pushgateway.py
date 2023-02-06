@@ -42,29 +42,18 @@ class MyCharm(CharmBase):
         self.pushgateway_requirer = PrometheusPushgatewayRequirer(self, "your-relation-name")
 ```
 
-Then use it at any moment to send a metric, passing its name and value:
+Then use it at any moment to send a metric (validating that the requirer is ready), passing
+its name and value:
 
 ```
+    if self.pushgateway_requirer.is_ready():
         self.pushgateway_requirer.send_metric("test_metric", 3.141592)
 ```
 
+The requirer is ready when the relation to the Prometheus Pushgateway is properly established.
+
 The `send_metric` call will just end quietly if the metric was sent succesfully, or will raise
 an exception if something is wrong (that error should be logged or informed to the operator).
-
-
-## Waiting for Pushgateway
-
-When your charm is deployed but the relation is still not added to the Prometheus Pushgateway,
-metrics cannot not be sent.
-
-For robustness you should only send metrics when the interface is ready:
-
-```
-self.pushgateway_requirer = PrometheusPushgatewayRequirer(self)
-...
-if self.pushgateway_requirer.is_ready():
-    self.pushgateway_requirer.send_metric("test_metric", 3.141592)
-```
 """
 
 import json
