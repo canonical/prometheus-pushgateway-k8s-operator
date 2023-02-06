@@ -150,6 +150,11 @@ class PrometheusPushgatewayRequirer(Object):
 
     def send_metric(self, name: str, value: Union[float, int], ignore_error: bool = False):
         """Send a metric to the Pushgateway."""
+        # This currently follows the "simple API" for the case of one metric
+        # without labels, as indicated here:
+        #    https://github.com/prometheus/pushgateway#api
+        # TODO: support the more complex cases
+
         if not isinstance(name, str) or not name.isascii() or not name:
             raise ValueError("The name must be a non-empty ASCII string.")
         if not isinstance(value, (float, int)):
