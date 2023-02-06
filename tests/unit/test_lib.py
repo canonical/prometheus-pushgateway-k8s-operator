@@ -15,6 +15,9 @@ from ops.testing import Harness
 from src.charm import PrometheusPushgatewayK8SOperatorCharm
 from tests.testingcharm.src.charm import TestingcharmCharm
 
+TEST_PORT = "9876"
+TEST_HOSTNAME = "hostname.test"
+
 
 @pytest.fixture()
 @patch("src.charm.KubernetesServicePatch", lambda x, y: None)
@@ -32,6 +35,15 @@ def testcharm_harness():
     return harness
 
 
+@pytest.fixture()
+def related_requirer(testcharm_harness):
+    """Provide an usefully related Prometheus Pushgateway Requirer."""
+    payload = {"push-endpoint": json.dumps({"port": TEST_PORT, "hostname": TEST_HOSTNAME})}
+    relation_id = testcharm_harness.add_relation("pushgateway", "remote")
+    testcharm_harness.update_relation_data(relation_id, "remote", payload)
+    return testcharm_harness.charm.pushgateway_requirer
+
+
 @patch("socket.getfqdn", lambda: "testhost")
 def test_provider_relation(pushgateway_harness):
     """Send connection information when the relation is created."""
@@ -41,29 +53,28 @@ def test_provider_relation(pushgateway_harness):
     assert json.loads(data["push-endpoint"]) == {"hostname": "testhost", "port": provider.port}
 
 
-def test_requirer_pushgateway_url_default(testcharm_harness):
-    """The pushgateway url has a default value."""
+def test_requirer_pushgateway_init(testcharm_harness):
+    """The pushgateway is not ready on bootstrap."""
     requirer = testcharm_harness.charm.pushgateway_requirer
-    assert requirer._stored.pushgateway_url is None
+    assert not requirer.is_ready()
 
 
 def test_requirer_pushgateway_relation_changed_empty(testcharm_harness):
-    """No changes when the relation is established without data."""
+    """The pushgateway is not ready when the relation is established without data."""
     requirer = testcharm_harness.charm.pushgateway_requirer
     testcharm_harness.add_relation("pushgateway", "remote")
-    assert requirer._stored.pushgateway_url is None
     assert not requirer.is_ready()
 
 
 def test_requirer_pushgateway_relation_changed_with_data(testcharm_harness):
-    """The pushgateway url is set when the relation is established and has data."""
+    """The pushgateway is ready when the relation is established and has data."""
     requirer = testcharm_harness.charm.pushgateway_requirer
     payload = {"push-endpoint": json.dumps({"port": "9876", "hostname": "hostname.test"})}
 
     relation_id = testcharm_harness.add_relation("pushgateway", "remote")
     testcharm_harness.update_relation_data(relation_id, "remote", payload)
-    assert requirer._stored.pushgateway_url == "http://hostname.test:9876/"
     assert requirer.is_ready()
+    assert requirer._pushgateway_url == "http://hostname.test:9876/"
 
 
 def test_requirer_pushgateway_relation_broken(testcharm_harness):
@@ -86,12 +97,10 @@ def test_requirer_pushgateway_relation_broken(testcharm_harness):
         "",  # empty
     ],
 )
-def test_requirer_sendmetric_bad_name_input(testcharm_harness, name):
+def test_requirer_sendmetric_bad_name_input(related_requirer, name):
     """Validate the name input to ensure the URL is properly built."""
-    requirer = testcharm_harness.charm.pushgateway_requirer
-    requirer._stored.pushgateway_url = "http://testhost:8080/"
     with pytest.raises(ValueError) as cm:
-        requirer.send_metric(name, 3.21)
+        related_requirer.send_metric(name, 3.21)
     assert str(cm.value) == "The name must be a non-empty ASCII string."
 
 
@@ -102,12 +111,10 @@ def test_requirer_sendmetric_bad_name_input(testcharm_harness, name):
         (4 + 5j),  # only scalar values
     ],
 )
-def test_requirer_sendmetric_bad_value_input(testcharm_harness, value):
+def test_requirer_sendmetric_bad_value_input(related_requirer, value):
     """Validate the value input to ensure the URL is properly built."""
-    requirer = testcharm_harness.charm.pushgateway_requirer
-    requirer._stored.pushgateway_url = "http://testhost:8080/"
     with pytest.raises(ValueError) as cm:
-        requirer.send_metric("testmetric", value)
+        related_requirer.send_metric("testmetric", value)
     assert str(cm.value) == "The metric value must be an integer or float number."
 
 
@@ -119,33 +126,27 @@ def test_requirer_sendmetric_bad_value_input(testcharm_harness, value):
         ("test_metric", 3.14, b"test_metric 3.14\n"),
     ],
 )
-def test_requirer_sendmetric_ok(testcharm_harness, name, value, expected_body):
+def test_requirer_sendmetric_ok(related_requirer, name, value, expected_body):
     """The metric was sent ok."""
-    requirer = testcharm_harness.charm.pushgateway_requirer
-    requirer._stored.pushgateway_url = "http://testhost:8080/"
-    expected_url = "http://testhost:8080/metrics/job/testjob"
+    expected_url = f"http://{TEST_HOSTNAME}:{TEST_PORT}/metrics/job/testjob"
     fake_resp = response.addinfourl(io.BytesIO(), {}, expected_url, code=200)
     with patch("urllib.request.urlopen", return_value=fake_resp) as mock_urlopen:
-        requirer.send_metric(name, value)
+        related_requirer.send_metric(name, value)
     mock_urlopen.assert_called_with(expected_url, data=expected_body)
 
 
-def test_requirer_sendmetric_error_raised(testcharm_harness):
+def test_requirer_sendmetric_error_raised(related_requirer):
     """Error raised because the metric was not sent ok."""
-    requirer = testcharm_harness.charm.pushgateway_requirer
-    requirer._stored.pushgateway_url = "http://testhost:8080/"
-    expected_url = "http://testhost:8080/metrics/job/testjob"
+    expected_url = f"http://{TEST_HOSTNAME}:{TEST_PORT}/metrics/job/testjob"
     fake_error = HTTPError(expected_url, 400, "BAD REQUEST", {}, io.BytesIO())
     with patch("urllib.request.urlopen", side_effect=fake_error):
         with pytest.raises(HTTPError):
-            requirer.send_metric("testmetric", 3.14)
+            related_requirer.send_metric("testmetric", 3.14)
 
 
-def test_requirer_sendmetric_error_ignored(testcharm_harness):
+def test_requirer_sendmetric_error_ignored(related_requirer):
     """The metric was not sent ok but the error is ignored."""
-    requirer = testcharm_harness.charm.pushgateway_requirer
-    requirer._stored.pushgateway_url = "http://testhost:8080/"
-    expected_url = "http://testhost:8080/metrics/job/testjob"
+    expected_url = f"http://{TEST_HOSTNAME}:{TEST_PORT}/metrics/job/testjob"
     fake_error = HTTPError(expected_url, 400, "BAD REQUEST", {}, io.BytesIO())
     with patch("urllib.request.urlopen", side_effect=fake_error):
-        requirer.send_metric("testmetric", 3.14, ignore_error=True)
+        related_requirer.send_metric("testmetric", 3.14, ignore_error=True)

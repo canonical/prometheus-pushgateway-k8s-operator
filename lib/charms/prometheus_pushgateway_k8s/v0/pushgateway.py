@@ -70,12 +70,12 @@ if self.pushgateway_requirer.is_ready():
 import json
 import logging
 import socket
-from typing import Union
+from typing import Optional, Union
 from urllib import request
 from urllib.error import HTTPError
 
 from ops.charm import CharmBase, RelationEvent
-from ops.framework import Object, StoredState
+from ops.framework import Object
 
 logger = logging.getLogger(__name__)
 
@@ -124,8 +124,6 @@ class PrometheusPushgatewayProvider(Object):
 class PrometheusPushgatewayRequirer(Object):
     """Requirer side for the Prometheus Pushgateway."""
 
-    _stored = StoredState()
-
     def __init__(self, charm: CharmBase, relation_name: str):
         """Construct the interface for the Prometheus Pushgateway.
 
@@ -138,28 +136,28 @@ class PrometheusPushgatewayRequirer(Object):
                 the `pushgateway` interface.
         """
         super().__init__(charm, relation_name)
-        self._stored.set_default(pushgateway_url=None)
+        self._relation_name = relation_name
 
-        events = charm.on[relation_name]
-        self.framework.observe(events.relation_created, self._on_push_relation_changed)
-        self.framework.observe(events.relation_changed, self._on_push_relation_changed)
-        self.framework.observe(events.relation_broken, self._on_push_relation_removed)
+    @property
+    def _pushgateway_url(self) -> Optional[str]:
+        """Build the pushgateway url using the relation data (if present, else return None)."""
+        relation = self.model.get_relation(self._relation_name)
+        if relation is None:
+            logger.warning(
+                "Prometheus Pushgateway Requirer not ready: "
+                "charm not related to the Pushgateway service")
+            return
+        raw_data = relation.data[relation.app].get(RELATION_KEY)
+        if raw_data is None:
+            logger.warning(
+                "Prometheus Pushgateway Requirer not ready: still no data in the relation")
+            return
+        data = json.loads(raw_data)
+        return "http://{hostname}:{port}/".format_map(data)
 
     def is_ready(self):
         """Return if the service is ready to send metrics."""
-        return self._stored.pushgateway_url is not None
-
-    def _on_push_relation_changed(self, event: RelationEvent) -> None:
-        """Receive the push endpoint information."""
-        raw = event.relation.data[event.app].get(RELATION_KEY)
-        if raw is not None:
-            logger.info("Received push endpoint information: %r", raw)
-            info = json.loads(raw)
-            self._stored.pushgateway_url = "http://{hostname}:{port}/".format_map(info)
-
-    def _on_push_relation_removed(self, event: RelationEvent) -> None:
-        """Clear the push endpoint information."""
-        self._stored.pushgateway_url = None
+        return self._pushgateway_url is not None
 
     def send_metric(self, name: str, value: Union[float, int], ignore_error: bool = False):
         """Send a metric to the Pushgateway."""
@@ -169,7 +167,7 @@ class PrometheusPushgatewayRequirer(Object):
             raise ValueError("The metric value must be an integer or float number.")
 
         payload = f"{name} {value}\n".encode("ascii")
-        post_url = self._stored.pushgateway_url + "metrics/job/testjob"
+        post_url = self._pushgateway_url + "metrics/job/testjob"
 
         try:
             request.urlopen(post_url, data=payload)
