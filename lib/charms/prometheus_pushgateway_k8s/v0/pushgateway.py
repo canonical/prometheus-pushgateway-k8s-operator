@@ -105,12 +105,8 @@ class PrometheusPushgatewayProvider(Object):
     def _on_relation_changed(self, event: RelationEvent):
         """Send the push endpoint info."""
         relation_data = event.relation.data[self.app]
-        relation_data[RELATION_KEY] = json.dumps(
-            {
-                "hostname": socket.getfqdn(),
-                "port": self.port,
-            }
-        )
+        hostname = socket.getfqdn()
+        relation_data[RELATION_KEY] = json.dumps({"url": f"http://{hostname}:{self.port}/"})
 
 
 class PrometheusPushgatewayRequirer(Object):
@@ -150,7 +146,7 @@ class PrometheusPushgatewayRequirer(Object):
                 "Prometheus Pushgateway Requirer not ready: corrupt data in the relation")
             return None
         try:
-            url = "http://{hostname}:{port}/".format_map(data)
+            url = data["url"]
         except KeyError:
             logger.warning(
                 "Prometheus Pushgateway Requirer not ready: "
