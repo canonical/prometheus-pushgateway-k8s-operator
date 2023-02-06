@@ -20,7 +20,7 @@ In the `metadata.yaml` of the charm, add the following:
 
 ```yaml
 requires:
-  your-relation-name:
+  pushgateway:
     interface: pushgateway
 ```
 
@@ -39,11 +39,14 @@ from ops.charm import CharmBase
 class MyCharm(CharmBase):
     def __init__(...):
          ...
-        self.pushgateway_requirer = PrometheusPushgatewayRequirer(self, "your-relation-name")
+        self.pushgateway_requirer = PrometheusPushgatewayRequirer(self)
 ```
 
-Then use it at any moment to send a metric (validating that the requirer is ready), passing
-its name and value:
+The relation name when instantiating PrometheusPushgatewayRequirer defaults to `pushgateway`,
+you can pass a different one if used other name in `metadata.yaml`.
+
+At any moment you can use the Pushgateway Requirer to send a metric (validating that the requirer
+is ready), passing its name and value:
 
 ```
     if self.pushgateway_requirer.is_ready():
@@ -113,7 +116,7 @@ class PrometheusPushgatewayProvider(Object):
 class PrometheusPushgatewayRequirer(Object):
     """Requirer side for the Prometheus Pushgateway."""
 
-    def __init__(self, charm: CharmBase, relation_name: str):
+    def __init__(self, charm: CharmBase, relation_name: str = "pushgateway"):
         """Construct the interface for the Prometheus Pushgateway.
 
         Args:

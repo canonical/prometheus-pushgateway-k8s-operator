@@ -30,7 +30,7 @@ class TestingcharmCharm(CharmBase):
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.send_metric_action, self._on_send_metric)
 
-        self.pushgateway_requirer = PrometheusPushgatewayRequirer(self, "pushgateway")
+        self.pushgateway_requirer = PrometheusPushgatewayRequirer(self)
 
     def _on_install(self, _) -> None:
         """Installed."""
