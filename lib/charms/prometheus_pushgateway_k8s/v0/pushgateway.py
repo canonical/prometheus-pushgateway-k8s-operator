@@ -117,9 +117,8 @@ class PrometheusPushgatewayRequirer(Object):
         """Construct the interface for the Prometheus Pushgateway.
 
         Args:
-            charm: a `CharmBase` object that manages this
-                `MetricsEndpointProvider` object. Typically, this is
-                `self` in the instantiating class.
+            charm: a `CharmBase` object that manages this object. Typically,
+                this is `self` in the instantiating class.
             relation_name: the name of the relation (whatever was used
                 in the `requires` section in `metadata.yaml` for
                 the `pushgateway` interface.

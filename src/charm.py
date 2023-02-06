@@ -40,7 +40,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         self.service_patch = KubernetesServicePatch(
             self, [(self.app.name, self._http_listen_port, self._http_listen_port)]
         )
-        self.provider = PrometheusPushgatewayProvider(
+        self.pushgateway_provider = PrometheusPushgatewayProvider(
             self, "push-endpoint", self._http_listen_port
         )
 
