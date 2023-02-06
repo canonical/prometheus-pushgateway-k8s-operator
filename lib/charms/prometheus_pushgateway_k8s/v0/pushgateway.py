@@ -38,7 +38,7 @@ from ops.charm import CharmBase
 
 class MyCharm(CharmBase):
     def __init__(...):
-         ...
+        ...
         self.pushgateway_requirer = PrometheusPushgatewayRequirer(self)
 ```
 
