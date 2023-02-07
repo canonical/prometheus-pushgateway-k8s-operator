@@ -7,13 +7,12 @@
 
 """A Juju Charmed Operator for Prometheus Pushgateway."""
 
-import json
 import logging
-import socket
 from typing import Optional
 
 from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
+from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayProvider
 from ops.charm import CharmBase, HookEvent
 from ops.main import main
 from ops.model import ActiveStatus, WaitingStatus
@@ -41,6 +40,9 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         self.service_patch = KubernetesServicePatch(
             self, [(self.app.name, self._http_listen_port, self._http_listen_port)]
         )
+        self.pushgateway_provider = PrometheusPushgatewayProvider(
+            self, "push-endpoint", self._http_listen_port
+        )
 
         # Provide ability for Pushgateway to be scraped by Prometheus using prometheus_scrape
         self._scraping = MetricsEndpointProvider(
@@ -50,19 +52,6 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         )
 
         self.framework.observe(self.on.pushgateway_pebble_ready, self._on_pebble_ready)
-
-        self.framework.observe(self.on.push_endpoint_relation_created, self._on_push_relation)
-        self.framework.observe(self.on.push_endpoint_relation_changed, self._on_push_relation)
-
-    def _on_push_relation(self, event: HookEvent) -> None:
-        """Send the push endpoint info."""
-        relation_data = event.relation.data[self.app]
-        relation_data["push-endpoint"] = json.dumps(
-            {
-                "hostname": socket.getfqdn(),
-                "port": self._http_listen_port,
-            }
-        )
 
     def _on_pebble_ready(self, event: HookEvent) -> None:
         """Set version and configure."""

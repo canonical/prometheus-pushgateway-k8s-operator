@@ -3,6 +3,7 @@
 
 import asyncio
 import logging
+import shutil
 from pathlib import Path
 from typing import List
 
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 APP_NAME = METADATA["name"]
+CHARMLIB_PATH = Path("lib") / "charms" / "prometheus_pushgateway_k8s" / "v0" / "pushgateway.py"
 
 
 class Prometheus:
@@ -39,14 +41,30 @@ class Prometheus:
         return result["data"] if result["status"] == "success" else []
 
 
+@pytest.fixture
+def updated_charmlib():
+    """Provide (and clean) the Pushgateway's charmlib for the testing charm."""
+    testingcharm_path = Path("tests") / "testingcharm"
+    dest_charmlib = testingcharm_path / CHARMLIB_PATH
+    dest_charmlib.parent.mkdir(parents=True)
+    try:
+        dest_charmlib.hardlink_to(CHARMLIB_PATH)
+        yield
+    finally:
+        shutil.rmtree(dest_charmlib.parent)
+
+
 @pytest.mark.abort_on_fail
-async def test_prometheus_integration(ops_test: OpsTest):
+async def test_prometheus_integration(
+    ops_test: OpsTest,
+    updated_charmlib: None,
+    pushgateway_charm: Path,
+    tester_charm: Path,
+):
     """Validate the integration between the Pushgateway and Prometheous."""
     prometheus_app_name = "prometheus"
     tester_name = "testingcharm"
     apps = [APP_NAME, prometheus_app_name, tester_name]
-    pushgateway_charm = await ops_test.build_charm(".")
-    tester_charm = await ops_test.build_charm("tests/testingcharm")
 
     image = METADATA["resources"]["pushgateway-image"]["upstream-source"]
     resources = {"pushgateway-image": image}
@@ -70,14 +88,10 @@ async def test_prometheus_integration(ops_test: OpsTest):
     )
     logger.info("All services deployed")
 
-    # do not wait for the testing charm here, as it will be blocked until is
+    # wait for all charms to be active
     # related to the pushgateway charm
-    main_apps = [APP_NAME, prometheus_app_name]
-    await ops_test.model.wait_for_idle(
-        apps=main_apps, status="active", wait_for_units=1, idle_period=90
-    )
-    await ops_test.model.wait_for_idle(apps=[tester_name], status="blocked", wait_for_units=1)
-    logger.info("Pushgateway and Prometheus active, testing charm waiting for the relation")
+    await ops_test.model.wait_for_idle(apps=apps, status="active", wait_for_units=1)
+    logger.info("All services active")
 
     # prepare the Prometheus helper and check it's ready
     status = await ops_test.model.get_status()
@@ -95,17 +109,15 @@ async def test_prometheus_integration(ops_test: OpsTest):
     )
     logger.info("Relations issued")
 
-    # A considerable idle_period is needed to guarantee metrics show up in prometheus
-    # (60 sec was not enough).
-    await ops_test.model.wait_for_idle(apps=apps, status="active", idle_period=90)
-    logger.info("All services ready")
+    await ops_test.model.wait_for_idle(apps=apps, status="active")
+    logger.info("All services related")
 
     # run the action to push a metric
     tester_unit = ops_test.model.applications[tester_name].units[0]
     test_metric = "some_testing_metric"
     action = await tester_unit.run_action("send-metric", name=test_metric, value="3.14")
     result = (await action.wait()).results
-    assert result["status-code"] == "200"
+    assert result["ok"] == "True", result
     logger.info("Metric sent to the Pushgateway")
 
     for i in range(20):
