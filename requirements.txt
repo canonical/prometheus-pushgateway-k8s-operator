@@ -1,4 +1,4 @@
-ops >= 1.5.0
+ops
 lightkube
 lightkube-models
 parse

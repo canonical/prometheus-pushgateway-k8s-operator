@@ -127,6 +127,16 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         #   build date:       20221129-16:30:38
         #   go version:       go1.19.3
         #   platform:         linux/amd64
+
+        # For some reason `/bin/pushgateway --version` is returning the result to stderr
+        # instead of stdout.
+        # `.wait_output()` return tuple of (stdout, stderr):
+        #
+        # (Pdb) self._container.exec(["/bin/pushgateway", "--version"]).wait_output()
+        # ('', 'pushgateway, version 1.6.0 (....'"
+        #
+        # That is why we have this workaround here:
+        version_output = _ if _ else version_output
         result = search("pushgateway, version {} ", version_output)
 
         if result is None:

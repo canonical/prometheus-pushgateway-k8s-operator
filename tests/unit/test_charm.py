@@ -14,17 +14,24 @@ from charm import PrometheusPushgatewayK8SOperatorCharm
 
 ops.testing.SIMULATE_CAN_CONNECT = True
 
+VERSION_OUTPUT = """
+pushgateway, version 1.5.1 (branch: HEAD, revision: 7afc96cfc3b20e56968ff30eea22b70e)
+  build user:       root@fc81889ee1a6
+  build date:       20221129-16:30:38
+  go version:       go1.19.3
+  platform:         linux/amd64
+"""
+
 
 class TestCharm(unittest.TestCase):
     @patch("charm.KubernetesServicePatch", lambda x, y: None)
     @patch("lightkube.core.client.GenericSyncClient")
     def setUp(self, *_):
-        self.container_name: str = "prometheus-pushgateway"
+        self.container_name: str = "pushgateway"
         self.harness = Harness(PrometheusPushgatewayK8SOperatorCharm)
-        patcher = patch.object(PrometheusPushgatewayK8SOperatorCharm, "_get_service_version")
-        self.mock_version = patcher.start()
-        self.mock_version.return_value = "2.4.0"
-        self.addCleanup(patcher.stop)
+        self.harness.handle_exec(
+            "pushgateway", ["/bin/pushgateway", "--version"], result=VERSION_OUTPUT
+        )
         self.harness.begin()
 
     def test_pebble_ready_ok(self):
