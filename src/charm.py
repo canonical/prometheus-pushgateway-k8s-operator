@@ -10,12 +10,11 @@
 import logging
 from typing import Optional
 
-from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayProvider
 from ops.charm import CharmBase, HookEvent
 from ops.main import main
-from ops.model import ActiveStatus, WaitingStatus
+from ops.model import ActiveStatus, OpenedPort, WaitingStatus
 from ops.pebble import Layer
 from parse import search  # type: ignore
 
@@ -36,10 +35,8 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
     def __init__(self, *args):
         super().__init__(*args)
         self._container = self.unit.get_container(self._name)
+        self.set_ports()
 
-        self.service_patch = KubernetesServicePatch(
-            self, [(self.app.name, self._http_listen_port, self._http_listen_port)]
-        )
         self.pushgateway_provider = PrometheusPushgatewayProvider(
             self, "push-endpoint", self._http_listen_port
         )
@@ -133,6 +130,22 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
             return result
 
         return result[0]
+
+    def set_ports(self):
+        """Open necessary (and close no longer needed) workload ports."""
+        planned_ports = {
+            OpenedPort("tcp", self._http_listen_port),
+        }
+        actual_ports = self.unit.opened_ports()
+
+        # Ports may change across an upgrade, so need to sync
+        ports_to_close = actual_ports.difference(planned_ports)
+        for p in ports_to_close:
+            self.unit.close_port(p.protocol, p.port)
+
+        new_ports_to_open = planned_ports.difference(actual_ports)
+        for p in new_ports_to_open:
+            self.unit.open_port(p.protocol, p.port)
 
 
 if __name__ == "__main__":  # pragma: nocover
