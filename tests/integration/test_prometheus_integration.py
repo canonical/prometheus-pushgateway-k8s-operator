@@ -46,6 +46,8 @@ def updated_charmlib():
     """Provide (and clean) the Pushgateway's charmlib for the testing charm."""
     testingcharm_path = Path("tests") / "testingcharm"
     dest_charmlib = testingcharm_path / CHARMLIB_PATH
+
+    shutil.rmtree(dest_charmlib.parent, ignore_errors=True)
     dest_charmlib.parent.mkdir(parents=True)
     try:
         dest_charmlib.hardlink_to(CHARMLIB_PATH)
