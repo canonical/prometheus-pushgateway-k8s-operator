@@ -92,7 +92,7 @@ async def test_prometheus_integration(
 
     # wait for all charms to be active
     # related to the pushgateway charm
-    await ops_test.model.wait_for_idle(apps=apps, status="active", wait_for_units=1)
+    await ops_test.model.wait_for_idle(apps=apps, status="active", wait_for_exact_units=1)
     logger.info("All services active")
 
     # prepare the Prometheus helper and check it's ready
