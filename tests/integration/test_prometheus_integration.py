@@ -50,7 +50,7 @@ def updated_charmlib():
     shutil.rmtree(dest_charmlib.parent, ignore_errors=True)
     dest_charmlib.parent.mkdir(parents=True)
     try:
-        dest_charmlib.hardlink_to(CHARMLIB_PATH)
+        shutil.copyfile(CHARMLIB_PATH, dest_charmlib)
         yield
     finally:
         shutil.rmtree(dest_charmlib.parent)
