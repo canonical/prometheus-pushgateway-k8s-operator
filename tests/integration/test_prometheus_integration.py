@@ -50,9 +50,11 @@ def updated_charmlib():
     shutil.rmtree(dest_charmlib.parent, ignore_errors=True)
     dest_charmlib.parent.mkdir(parents=True)
     try:
+        logger.info("Copying library from charm to testcharm")
         shutil.copyfile(CHARMLIB_PATH, dest_charmlib)
         yield
     finally:
+        logger.info("Removing library from charm to testcharm")
         shutil.rmtree(dest_charmlib.parent)
 
 
