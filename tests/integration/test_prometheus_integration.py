@@ -4,6 +4,7 @@
 import asyncio
 import logging
 import shutil
+from os.path import exists
 from pathlib import Path
 from typing import List
 
@@ -72,6 +73,11 @@ async def test_prometheus_integration(
 
     image = METADATA["resources"]["pushgateway-image"]["upstream-source"]
     resources = {"pushgateway-image": image}
+
+    testingcharm_path = Path("tests") / "testingcharm"
+    dest_charmlib = testingcharm_path / CHARMLIB_PATH
+    msg = f"Library is in the charm: {exists(dest_charmlib)}"
+    logger.info(msg)
 
     await asyncio.gather(
         ops_test.model.deploy(
