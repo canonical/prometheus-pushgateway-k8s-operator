@@ -4,7 +4,6 @@
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
 import unittest
-from unittest.mock import patch
 
 import ops.testing
 from ops.model import ActiveStatus

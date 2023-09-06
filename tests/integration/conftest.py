@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 from pytest_operator.plugin import OpsTest
 
-
 CHARMLIB_PATH = Path("lib/charms/prometheus_pushgateway_k8s/v0/pushgateway.py")
 
 logger = logging.getLogger(__name__)
