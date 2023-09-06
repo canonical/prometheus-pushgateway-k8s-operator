@@ -3,7 +3,6 @@
 
 import asyncio
 import logging
-import shutil
 from pathlib import Path
 from typing import List
 
@@ -41,23 +40,9 @@ class Prometheus:
         return result["data"] if result["status"] == "success" else []
 
 
-@pytest.fixture
-def updated_charmlib():
-    """Provide (and clean) the Pushgateway's charmlib for the testing charm."""
-    testingcharm_path = Path("tests") / "testingcharm"
-    dest_charmlib = testingcharm_path / CHARMLIB_PATH
-    dest_charmlib.parent.mkdir(parents=True)
-    try:
-        dest_charmlib.hardlink_to(CHARMLIB_PATH)
-        yield
-    finally:
-        shutil.rmtree(dest_charmlib.parent)
-
-
 @pytest.mark.abort_on_fail
 async def test_prometheus_integration(
     ops_test: OpsTest,
-    updated_charmlib: None,
     pushgateway_charm: Path,
     tester_charm: Path,
 ):
@@ -90,7 +75,7 @@ async def test_prometheus_integration(
 
     # wait for all charms to be active
     # related to the pushgateway charm
-    await ops_test.model.wait_for_idle(apps=apps, status="active", wait_for_units=1)
+    await ops_test.model.wait_for_idle(apps=apps, status="active", wait_for_exact_units=1)
     logger.info("All services active")
 
     # prepare the Prometheus helper and check it's ready

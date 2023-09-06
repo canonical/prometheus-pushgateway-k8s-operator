@@ -16,8 +16,6 @@ ops.testing.SIMULATE_CAN_CONNECT = True
 
 
 class TestCharm(unittest.TestCase):
-    @patch("charm.KubernetesServicePatch", lambda x, y: None)
-    @patch("lightkube.core.client.GenericSyncClient")
     def setUp(self, *_):
         self.container_name: str = "prometheus-pushgateway"
         self.harness = Harness(PrometheusPushgatewayK8SOperatorCharm)
