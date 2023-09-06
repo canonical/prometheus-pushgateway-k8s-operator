@@ -40,7 +40,6 @@ class Prometheus:
         return result["data"] if result["status"] == "success" else []
 
 
-
 @pytest.mark.abort_on_fail
 async def test_prometheus_integration(
     ops_test: OpsTest,
