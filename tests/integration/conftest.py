@@ -3,11 +3,14 @@
 
 import functools
 import logging
+import shutil
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 from pytest_operator.plugin import OpsTest
+
+CHARMLIB_PATH = Path("lib") / "charms" / "prometheus_pushgateway_k8s" / "v0" / "pushgateway.py"
 
 logger = logging.getLogger(__name__)
 
@@ -44,5 +47,16 @@ async def pushgateway_charm(ops_test: OpsTest) -> Path:
 @timed_memoizer
 async def tester_charm(ops_test: OpsTest) -> Path:
     """A charm to integration test the Pushgateway charm."""
-    charm = await ops_test.build_charm("tests/testingcharm")
+    testingcharm_path = Path("tests") / "testingcharm"
+
+    dest_charmlib = testingcharm_path / CHARMLIB_PATH
+    shutil.rmtree(dest_charmlib.parent, ignore_errors=True)
+    dest_charmlib.parent.mkdir(parents=True)
+    dest_charmlib.hardlink_to(CHARMLIB_PATH)
+
+    clean_cmd = ["charmcraft", "clean", "-p", testingcharm_path]
+    await ops_test.run(*clean_cmd)
+    charm = await ops_test.build_charm(testingcharm_path)
+
+    shutil.rmtree(dest_charmlib.parent)
     return charm
