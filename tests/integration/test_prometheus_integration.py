@@ -3,7 +3,6 @@
 
 import asyncio
 import logging
-import shutil
 from pathlib import Path
 from typing import List
 
