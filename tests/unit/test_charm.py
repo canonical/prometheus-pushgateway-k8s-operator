@@ -24,8 +24,6 @@ pushgateway, version 1.5.1 (branch: HEAD, revision: 7afc96cfc3b20e56968ff30eea22
 
 
 class TestCharm(unittest.TestCase):
-    @patch("charm.KubernetesServicePatch", lambda x, y: None)
-    @patch("lightkube.core.client.GenericSyncClient")
     def setUp(self, *_):
         self.container_name: str = "pushgateway"
         self.harness = Harness(PrometheusPushgatewayK8SOperatorCharm)

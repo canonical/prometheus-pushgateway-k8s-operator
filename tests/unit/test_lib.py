@@ -19,7 +19,6 @@ TEST_URL = "http://hostname.test:9876/"
 
 
 @pytest.fixture()
-@patch("src.charm.KubernetesServicePatch", lambda x, y: None)
 def pushgateway_harness():
     harness = Harness(PrometheusPushgatewayK8SOperatorCharm)
     harness.begin()

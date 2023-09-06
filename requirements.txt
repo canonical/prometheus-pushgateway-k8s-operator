@@ -1,4 +1,2 @@
 ops
-lightkube
-lightkube-models
 parse
