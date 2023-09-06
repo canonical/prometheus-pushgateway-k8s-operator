@@ -41,26 +41,9 @@ class Prometheus:
         return result["data"] if result["status"] == "success" else []
 
 
-@pytest.fixture
-def updated_charmlib():
-    """Provide (and clean) the Pushgateway's charmlib for the testing charm."""
-    testingcharm_path = Path("tests") / "testingcharm"
-    dest_charmlib = testingcharm_path / CHARMLIB_PATH
-    shutil.rmtree(dest_charmlib.parent, ignore_errors=True)
-    dest_charmlib.parent.mkdir(parents=True)
-    try:
-        logger.info("Copying library from charm to testcharm")
-        shutil.copyfile(CHARMLIB_PATH, dest_charmlib)
-        yield
-    finally:
-        logger.info("Removing library from charm to testcharm")
-        shutil.rmtree(dest_charmlib.parent)
-
-
 @pytest.mark.abort_on_fail
 async def test_prometheus_integration(
     ops_test: OpsTest,
-    updated_charmlib: None,
     pushgateway_charm: Path,
     tester_charm: Path,
 ):
