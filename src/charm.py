@@ -9,7 +9,7 @@
 
 import logging
 import socket
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 from charms.observability_libs.v0.cert_handler import CertHandler
@@ -24,6 +24,7 @@ from parse import search  # type: ignore
 # By default, Pushgateway does not persist metrics, but we can specify a file in which
 # the pushed metrics will be persisted (so that they survive restarts of the Pushgateway)
 METRICS_PATH = "/data/metrics"
+
 PUSHGATEWAY_DIR = "/etc/pushgateway"
 PUSHGATEWAY_BINARY = "/bin/pushgateway"
 
@@ -80,7 +81,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         return socket.getfqdn()
 
     @property
-    def _command(self):
+    def _command(self) -> str:
         args = [f"--persistence.file={METRICS_PATH}"]
 
         if self._web_config:
@@ -152,7 +153,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         )
 
     @property
-    def _self_metrics_jobs(self):
+    def _self_metrics_jobs(self) -> List[Dict[str, Any]]:
         job: Dict[str, Any] = {
             "static_configs": [{"targets": [f"{self._hostname}:{self._http_listen_port}"]}]
         }
@@ -162,46 +163,46 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
 
         return [job]
 
-    def _on_server_cert_changed(self, _):
+    def _on_server_cert_changed(self, _) -> None:
         self._update_certs()
         self._scraping.update_scrape_job_spec(self._self_metrics_jobs)
         self._configure()
 
-    def _on_pebble_ready(self, _):
+    def _on_pebble_ready(self, _) -> None:
         self._configure()
 
-    def _on_config_changed(self, _):
+    def _on_config_changed(self, _) -> None:
         self._configure()
 
-    def _on_upgrade_charm(self, _):
+    def _on_upgrade_charm(self, _) -> None:
         self._configure()
 
-    def _on_update_status(self, _):
+    def _on_update_status(self, _) -> None:
         self._configure()
 
-    def _configure(self):
-        self._set_service_version()
-
+    def _configure(self) -> None:
         if not self._container.can_connect():
             self.unit.status = WaitingStatus("Waiting for Pebble ready")
             return
 
-        self._container.remove_path(WEB_CONFIG_PATH, recursive=True)
-        web_config = self._web_config
+        self._set_service_version()
+        self._handle_web_config()
 
-        if web_config:
-            self._container.push(
-                WEB_CONFIG_PATH, yaml.safe_dump(web_config), make_dirs=True, encoding="utf-8"
-            )
-
-        restart_needed = self._set_pebble_layer()
-        if restart_needed:
+        if self._set_pebble_layer():
             self._container.restart(self._name)
             logger.info("Prometheus Pushgateway (re)started")
 
         self.unit.status = ActiveStatus()
 
-    def _update_certs(self):
+    def _handle_web_config(self) -> None:
+        self._container.remove_path(WEB_CONFIG_PATH, recursive=True)
+
+        if web_config := self._web_config:
+            self._container.push(
+                WEB_CONFIG_PATH, yaml.safe_dump(web_config), make_dirs=True, encoding="utf-8"
+            )
+
+    def _update_certs(self) -> None:
         if not self._container.can_connect():
             return
 
@@ -282,7 +283,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
             }
         )
 
-    def set_ports(self):
+    def set_ports(self) -> None:
         """Open necessary (and close no longer needed) workload ports."""
         planned_ports = {
             OpenedPort("tcp", self._http_listen_port),
