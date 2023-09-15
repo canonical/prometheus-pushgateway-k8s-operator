@@ -30,7 +30,7 @@ resources:
     type: oci-image
     description: OCI image for Prometheus Pushgateway
     # Included for simplicity in integration tests
-    upstream-source: docker.io/prom/pushgateway:latest
+    upstream-source: ghcr.io/canonical/prometheus-pushgateway:dev
 
 provides:
   metrics-endpoint:
