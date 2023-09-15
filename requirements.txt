@@ -1,2 +1,5 @@
 ops
 parse
+cosl
+jsonschema
+cryptography
