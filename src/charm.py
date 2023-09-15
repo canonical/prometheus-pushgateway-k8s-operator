@@ -8,11 +8,14 @@
 """A Juju Charmed Operator for Prometheus Pushgateway."""
 
 import logging
-from typing import Optional
+import socket
+from typing import Any, Dict, Optional
 
+import yaml
+from charms.observability_libs.v0.cert_handler import CertHandler
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayProvider
-from ops.charm import CharmBase, HookEvent
+from ops.charm import CharmBase
 from ops.main import main
 from ops.model import ActiveStatus, OpenedPort, WaitingStatus
 from ops.pebble import Layer
@@ -21,6 +24,14 @@ from parse import search  # type: ignore
 # By default, Pushgateway does not persist metrics, but we can specify a file in which
 # the pushed metrics will be persisted (so that they survive restarts of the Pushgateway)
 METRICS_PATH = "/data/metrics"
+PUSHGATEWAY_DIR = "/etc/pushgateway"
+PUSHGATEWAY_BINARY = "/bin/pushgateway"
+
+KEY_PATH = f"{PUSHGATEWAY_DIR}/server.key"
+CERT_PATH = f"{PUSHGATEWAY_DIR}/server.cert"
+CA_CERT_PATH = f"{PUSHGATEWAY_DIR}/cos-ca.crt"
+CA_CERT_TRUSTED_PATH = "/usr/local/share/ca-certificates/cos-ca.crt"
+WEB_CONFIG_PATH = f"{PUSHGATEWAY_DIR}/web-config.yml"
 
 logger = logging.getLogger(__name__)
 
@@ -45,18 +56,143 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         self._scraping = MetricsEndpointProvider(
             self,
             relation_name="metrics-endpoint",
-            jobs=[{"static_configs": [{"targets": [f"*:{self._http_listen_port}"]}]}],
+            jobs=self._self_metrics_jobs,
+            refresh_event=[
+                self.on.update_status,
+            ],
         )
 
-        self.framework.observe(self.on.pushgateway_pebble_ready, self._on_pebble_ready)
+        self._cert_handler = CertHandler(
+            charm=self,
+            key="pushgateway-server-cert",
+            peer_relation_name="pushgateway-peers",
+            extra_sans_dns=[self._hostname],
+        )
 
-    def _on_pebble_ready(self, event: HookEvent) -> None:
-        """Set version and configure."""
+        self.framework.observe(self._cert_handler.on.cert_changed, self._on_server_cert_changed)
+        self.framework.observe(self.on.pushgateway_pebble_ready, self._on_pebble_ready)
+        self.framework.observe(self.on.config_changed, self._on_config_changed)
+        self.framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
+        self.framework.observe(self.on.update_status, self._on_update_status)
+
+    @property
+    def _hostname(self) -> str:
+        return socket.getfqdn()
+
+    @property
+    def _command(self):
+        args = [f"--persistence.file={METRICS_PATH}"]
+
+        if self._web_config:
+            args.append(f"--web.config.file={WEB_CONFIG_PATH}")
+
+        command = [PUSHGATEWAY_BINARY] + args
+        return " ".join(command)
+
+    @property
+    def _web_config(self) -> Optional[dict]:
+        """Return the web.config.file contents as a dict, if TLS is enabled; otherwise None.
+
+        Ref: https://prometheus.io/docs/prometheus/latest/configuration/https/
+        """
+        if self._tls_ready:
+            return {
+                "tls_server_config": {
+                    "cert_file": CERT_PATH,
+                    "key_file": KEY_PATH,
+                }
+            }
+        return None
+
+    @property
+    def _service_version(self) -> Optional[str]:
+        if not self._container.can_connect():
+            return None
+
+        version_output, _ = self._container.exec([PUSHGATEWAY_BINARY, "--version"]).wait_output()
+        # Output looks like this:
+        # pushgateway, version 1.5.1 (branch: HEAD, revision: 7afc96cfc3b20e56968ff30eea22b70e)
+        #   build user:       root@fc81889ee1a6
+        #   build date:       20221129-16:30:38
+        #   go version:       go1.19.3
+        #   platform:         linux/amd64
+
+        # For some reason `/bin/pushgateway --version` is returning the result to stderr
+        # instead of stdout.
+        # `.wait_output()` return tuple of (stdout, stderr):
+        #
+        # (Pdb) self._container.exec(["/bin/pushgateway", "--version"]).wait_output()
+        # ('', 'pushgateway, version 1.6.0 (....'"
+        #
+        # That is why we have this workaround here:
+        version_output = _ if _ else version_output
+        result = search("pushgateway, version {} ", version_output)
+
+        if result is None:
+            return result
+
+        return result[0]
+
+    @property
+    def _certs_available(self) -> bool:
+        return (
+            self._cert_handler.enabled
+            and self._cert_handler.cert
+            and self._cert_handler.key
+            and self._cert_handler.ca
+        )
+
+    @property
+    def _tls_ready(self) -> bool:
+        return (
+            self._container.can_connect()
+            and self._container.exists(CERT_PATH)
+            and self._container.exists(KEY_PATH)
+            and self._container.exists(CA_CERT_PATH)
+        )
+
+    @property
+    def _self_metrics_jobs(self):
+        job: Dict[str, Any] = {
+            "static_configs": [{"targets": [f"{self._hostname}:{self._http_listen_port}"]}]
+        }
+
+        if self._tls_ready:
+            job["scheme"] = "https"
+
+        return [job]
+
+    def _on_server_cert_changed(self, _):
+        self._update_certs()
+        self._scraping.update_scrape_job_spec(self._self_metrics_jobs)
+        self._configure()
+
+    def _on_pebble_ready(self, _):
+        self._configure()
+
+    def _on_config_changed(self, _):
+        self._configure()
+
+    def _on_upgrade_charm(self, _):
+        self._configure()
+
+    def _on_update_status(self, _):
+        self._configure()
+
+    def _configure(self):
         self._set_service_version()
 
         if not self._container.can_connect():
             self.unit.status = WaitingStatus("Waiting for Pebble ready")
             return
+
+        self._container.remove_path(WEB_CONFIG_PATH, recursive=True)
+        web_config = self._web_config
+
+        if web_config:
+            self._container.push(
+                WEB_CONFIG_PATH, yaml.safe_dump(web_config), make_dirs=True, encoding="utf-8"
+            )
 
         restart_needed = self._set_pebble_layer()
         if restart_needed:
@@ -65,9 +201,43 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
 
         self.unit.status = ActiveStatus()
 
+    def _update_certs(self):
+        if not self._container.can_connect():
+            return
+
+        self._container.remove_path(CERT_PATH, recursive=True)
+        self._container.remove_path(KEY_PATH, recursive=True)
+        self._container.remove_path(CA_CERT_PATH, recursive=True)
+        self._container.remove_path(CA_CERT_TRUSTED_PATH, recursive=True)
+
+        if self._certs_available:
+            # Save the workload certificates
+            self._container.push(
+                CERT_PATH,
+                self._cert_handler.cert,
+                make_dirs=True,
+            )
+            self._container.push(
+                KEY_PATH,
+                self._cert_handler.key,
+                make_dirs=True,
+            )
+            self._container.push(
+                CA_CERT_PATH,
+                self._cert_handler.ca,
+                make_dirs=True,
+            )
+            self._container.push(
+                CA_CERT_TRUSTED_PATH,
+                self._cert_handler.ca,
+                make_dirs=True,
+            )
+
+        self._container.exec(["update-ca-certificates", "--fresh"]).wait()
+
     def _set_service_version(self) -> bool:
         """Set the service version in the unit."""
-        version = self._get_service_version()
+        version = self._service_version
 
         if version is None:
             logger.debug(
@@ -105,41 +275,12 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
                     "pushgateway": {
                         "override": "replace",
                         "summary": "pushgateway process",
-                        "command": f"/bin/pushgateway --persistence.file={METRICS_PATH}",
+                        "command": self._command,
                         "startup": "enabled",
                     }
                 },
             }
         )
-
-    def _get_service_version(self) -> Optional[str]:
-        """Get the version of the running service."""
-        if not self._container.can_connect():
-            return None
-
-        version_output, _ = self._container.exec(["/bin/pushgateway", "--version"]).wait_output()
-        # Output looks like this:
-        # pushgateway, version 1.5.1 (branch: HEAD, revision: 7afc96cfc3b20e56968ff30eea22b70e)
-        #   build user:       root@fc81889ee1a6
-        #   build date:       20221129-16:30:38
-        #   go version:       go1.19.3
-        #   platform:         linux/amd64
-
-        # For some reason `/bin/pushgateway --version` is returning the result to stderr
-        # instead of stdout.
-        # `.wait_output()` return tuple of (stdout, stderr):
-        #
-        # (Pdb) self._container.exec(["/bin/pushgateway", "--version"]).wait_output()
-        # ('', 'pushgateway, version 1.6.0 (....'"
-        #
-        # That is why we have this workaround here:
-        version_output = _ if _ else version_output
-        result = search("pushgateway, version {} ", version_output)
-
-        if result is None:
-            return result
-
-        return result[0]
 
     def set_ports(self):
         """Open necessary (and close no longer needed) workload ports."""
