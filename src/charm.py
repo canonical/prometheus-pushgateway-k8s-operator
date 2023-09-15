@@ -47,7 +47,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
     def __init__(self, *args):
         super().__init__(*args)
         self._container = self.unit.get_container(self._name)
-        self.set_ports()
+        self._set_ports()
 
         self.pushgateway_provider = PrometheusPushgatewayProvider(
             self, "push-endpoint", self._http_listen_port
@@ -206,33 +206,24 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         if not self._container.can_connect():
             return
 
-        self._container.remove_path(CERT_PATH, recursive=True)
-        self._container.remove_path(KEY_PATH, recursive=True)
-        self._container.remove_path(CA_CERT_PATH, recursive=True)
-        self._container.remove_path(CA_CERT_TRUSTED_PATH, recursive=True)
+        certs = {
+            CERT_PATH: self._cert_handler.cert,
+            KEY_PATH: self._cert_handler.key,
+            CA_CERT_PATH: self._cert_handler.ca,
+            CA_CERT_TRUSTED_PATH: self._cert_handler.ca,
+        }
+
+        for f in certs:
+            self._container.remove_path(f, recursive=True)
 
         if self._certs_available:
             # Save the workload certificates
-            self._container.push(
-                CERT_PATH,
-                self._cert_handler.cert,
-                make_dirs=True,
-            )
-            self._container.push(
-                KEY_PATH,
-                self._cert_handler.key,
-                make_dirs=True,
-            )
-            self._container.push(
-                CA_CERT_PATH,
-                self._cert_handler.ca,
-                make_dirs=True,
-            )
-            self._container.push(
-                CA_CERT_TRUSTED_PATH,
-                self._cert_handler.ca,
-                make_dirs=True,
-            )
+            for f, content in certs.items():
+                self._container.push(
+                    f,
+                    content,
+                    make_dirs=True,
+                )
 
         self._container.exec(["update-ca-certificates", "--fresh"]).wait()
 
@@ -283,7 +274,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
             }
         )
 
-    def set_ports(self) -> None:
+    def _set_ports(self) -> None:
         """Open necessary (and close no longer needed) workload ports."""
         planned_ports = {
             OpenedPort("tcp", self._http_listen_port),
