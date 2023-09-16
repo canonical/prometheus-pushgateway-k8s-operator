@@ -48,7 +48,7 @@ def test_provider_relation(pushgateway_harness):
     provider = pushgateway_harness.charm.pushgateway_provider
     relation_id = pushgateway_harness.add_relation("push-endpoint", "remote")
     data = pushgateway_harness.get_relation_data(relation_id, "prometheus-pushgateway-k8s")
-    assert json.loads(data["push-endpoint"]) == {"url": f"http://testhost:{provider.port}/"}
+    assert json.loads(data["push-endpoint"]) == {"url": provider.endpoint}
 
 
 def test_requirer_pushgateway_init(testcharm_harness):
