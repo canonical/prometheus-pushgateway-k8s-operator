@@ -50,7 +50,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         self._set_ports()
 
         self.pushgateway_provider = PrometheusPushgatewayProvider(
-            self, "push-endpoint", self._http_listen_port
+            self, "push-endpoint", self._endpoint
         )
 
         # Provide ability for Pushgateway to be scraped by Prometheus using prometheus_scrape
@@ -79,6 +79,11 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
     @property
     def _hostname(self) -> str:
         return socket.getfqdn()
+
+    @property
+    def _endpoint(self) -> str:
+        scheme = "https" if self._tls_ready else "http"
+        return f"{scheme}://{self._hostname}:{self._http_listen_port}/"
 
     @property
     def _command(self) -> str:

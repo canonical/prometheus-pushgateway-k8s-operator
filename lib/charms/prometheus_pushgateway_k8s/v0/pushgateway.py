@@ -61,7 +61,7 @@ an exception if something is wrong (that error should be logged or informed to t
 
 import json
 import logging
-import socket
+import ssl
 from typing import Optional, Union
 from urllib import request
 from urllib.error import HTTPError
@@ -80,7 +80,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 1
+LIBPATCH = 2
 
 # the key in the relation data
 RELATION_KEY = "push-endpoint"
@@ -94,10 +94,10 @@ class PrometheusPushgatewayProvider(Object):
     use this library to integrate with the Prometheus Pushgateway.
     """
 
-    def __init__(self, charm: CharmBase, relation_name: str, port: int):
+    def __init__(self, charm: CharmBase, relation_name: str, endpoint: str):
         super().__init__(charm, relation_name)
-        self.port = port
         self.app = charm.app
+        self.endpoint = endpoint
         events = charm.on[relation_name]
         self.framework.observe(events.relation_created, self._on_relation_changed)
         self.framework.observe(events.relation_changed, self._on_relation_changed)
@@ -105,8 +105,7 @@ class PrometheusPushgatewayProvider(Object):
     def _on_relation_changed(self, event: RelationEvent):
         """Send the push endpoint info."""
         relation_data = event.relation.data[self.app]
-        hostname = socket.getfqdn()
-        relation_data[RELATION_KEY] = json.dumps({"url": f"http://{hostname}:{self.port}/"})
+        relation_data[RELATION_KEY] = json.dumps({"url": self.endpoint})
 
 
 class PrometheusPushgatewayRequirer(Object):
@@ -158,7 +157,7 @@ class PrometheusPushgatewayRequirer(Object):
         """Return if the service is ready to send metrics."""
         return self._pushgateway_url is not None
 
-    def send_metric(self, name: str, value: Union[float, int], ignore_error: bool = False):
+    def send_metric(self, name: str, value: Union[float, int], ignore_error: bool = False, verify_ssl: bool = True):
         """Send a metric to the Pushgateway."""
         # This currently follows the "simple API" for the case of one metric
         # without labels, as indicated here:
@@ -177,7 +176,13 @@ class PrometheusPushgatewayRequirer(Object):
         post_url = pushgateway_url + "metrics/job/testjob"
 
         try:
-            request.urlopen(post_url, data=payload)
+            if not verify_ssl:
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                request.urlopen(post_url, data=payload, context=ctx)
+            else:
+                request.urlopen(post_url, data=payload)
         except HTTPError:
             if not ignore_error:
                 raise
