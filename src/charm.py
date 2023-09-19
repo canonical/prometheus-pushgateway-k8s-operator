@@ -223,9 +223,6 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
             CA_CERT_TRUSTED_PATH: self._cert_handler.ca,
         }
 
-        for f in certs:
-            self._container.remove_path(f, recursive=True)
-
         if self._certs_available:
             # Save the workload certificates
             for f, content in certs.items():
@@ -234,6 +231,9 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
                     content,
                     make_dirs=True,
                 )
+        else:
+            for f in certs:
+                self._container.remove_path(f, recursive=True)
 
         self._container.exec(["update-ca-certificates", "--fresh"]).wait()
 
