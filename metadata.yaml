@@ -43,7 +43,7 @@ requires:
     interface: tls-certificates
     limit: 1
     description: |
-      Obtain a CA and a server certificate for Prometheus to use for TLS.
+      Obtain a CA and a server certificates for prometheus-gateway to use for TLS.
       The same CA cert is used for all in-cluster requests, e.g.:
       - (client) scraping targets for self-monitoring
       - (client) posting alerts to alertmanager server
