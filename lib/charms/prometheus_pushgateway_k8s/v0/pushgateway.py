@@ -231,15 +231,13 @@ class PrometheusPushgatewayRequirer(Object):
 
         payload = f"{name} {value}\n".encode("ascii")
         post_url = pushgateway_url + "metrics/job/testjob"
+        ctx = ssl.create_default_context()
+        if not verify_ssl:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
 
         try:
-            if not verify_ssl:
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
-                request.urlopen(post_url, data=payload, context=ctx)
-            else:
-                request.urlopen(post_url, data=payload)
+            request.urlopen(post_url, data=payload, context=ctx)
         except HTTPError:
             if not ignore_error:
                 raise
