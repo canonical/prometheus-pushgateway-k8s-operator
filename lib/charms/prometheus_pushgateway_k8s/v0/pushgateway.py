@@ -94,7 +94,18 @@ class PrometheusPushgatewayProvider(Object):
     use this library to integrate with the Prometheus Pushgateway.
     """
 
-    def __init__(self, charm: CharmBase, relation_name: str, endpoint: str):
+    def __init__(self, charm: CharmBase, relation_name: str, endpoint: str = "http://127.0.0.1:9091"):
+        """Construct the interface for the Prometheus Pushgateway Provider side of the relation.
+
+        Args:
+            charm: a `CharmBase` object that manages this object. Typically,
+                this is `self` in the instantiating class.
+            relation_name: the name of the relation (whatever was used
+                in the `requires` section in `metadata.yaml` for the `pushgateway` interface.
+            endpoint: the endpoint that Prometheus Pushgateway expose to consumers, for instance:
+                "https://pushgateway-0.pushgateway-endpoints.clite.svc.cluster.local:9091" or
+                "http://10.1.38.86:9091"
+        """
         super().__init__(charm, relation_name)
         self.app = charm.app
         self.endpoint = endpoint
