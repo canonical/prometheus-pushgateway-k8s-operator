@@ -171,6 +171,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
     def _on_server_cert_changed(self, _) -> None:
         self._update_certs()
         self._scraping.update_scrape_job_spec(self._self_metrics_jobs)
+        self.pushgateway_provider.update_endpoint(self._endpoint)
         self._configure()
 
     def _on_pebble_ready(self, _) -> None:

@@ -153,6 +153,8 @@ class PrometheusPushgatewayProvider(Object):
                 "http://10.1.38.86:9091"
         """
         super().__init__(charm, relation_name)
+        self._charm = charm
+        self._relation_name = relation_name
         self.app = charm.app
         self.endpoint = endpoint
         events = charm.on[relation_name]
@@ -163,6 +165,15 @@ class PrometheusPushgatewayProvider(Object):
         """Send the push endpoint info."""
         relation_data = event.relation.data[self.app]
         relation_data[RELATION_KEY] = json.dumps({"url": self.endpoint})
+
+    def update_endpoint(self, endpoint: str):
+        """Update endpoint in relation data."""
+        self.endpoint = endpoint
+
+        for rel in self._charm.model.relations.get(self._relation_name, []):
+            if not rel:
+                continue
+            rel.data[self._charm.app][RELATION_KEY] = json.dumps({"url": self.endpoint})
 
 
 class PrometheusPushgatewayRequirer(Object):
