@@ -73,6 +73,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         self.framework.observe(self._cert_handler.on.cert_changed, self._on_server_cert_changed)
         self.framework.observe(self.on.pushgateway_pebble_ready, self._on_pebble_ready)
         self.framework.observe(self.on.config_changed, self._on_config_changed)
+        self.framework.observe(self.on.stop, self._on_stop)
         self.framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
         self.framework.observe(self.on.update_status, self._on_update_status)
 
@@ -179,6 +180,9 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
 
     def _on_config_changed(self, _) -> None:
         self._configure()
+
+    def _on_stop(self, _) -> None:
+        self.unit.set_workload_version("")
 
     def _on_upgrade_charm(self, _) -> None:
         self._configure()
