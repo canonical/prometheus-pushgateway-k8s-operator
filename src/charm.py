@@ -205,12 +205,12 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         self.unit.status = ActiveStatus()
 
     def _handle_web_config(self) -> None:
-        self._container.remove_path(WEB_CONFIG_PATH, recursive=True)
-
         if web_config := self._web_config:
             self._container.push(
                 WEB_CONFIG_PATH, yaml.safe_dump(web_config), make_dirs=True, encoding="utf-8"
             )
+        else:
+            self._container.remove_path(WEB_CONFIG_PATH, recursive=True)
 
     def _update_certs(self) -> None:
         if not self._container.can_connect():
