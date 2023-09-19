@@ -7,7 +7,53 @@ This library wraps a relation endpoint using the `pushgwateway` interface
 and exposes an API for forwarding metrics to Prometheus.
 
 
-## Getting Started
+# Getting Started
+
+## Provider side of the relation
+
+This side of the relation is to be used by Prometheus Pushgateway Charm or any other charm that
+provides the same service.
+
+To get started using the library, you just need to fetch the library using `charmcraft`.
+
+```shell
+cd some-charm
+charmcraft fetch-lib charms.prometheus_pushgateway_k8s.v0.pushgateway
+```
+
+In the `metadata.yaml` of the charm, add the following:
+
+```yaml
+provides:
+  push-endpoint:
+    interface: pushgateway
+```
+
+In the source of your charm, first import the interface:
+
+```
+from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayProvider
+````
+
+Instantiate the object in your charm's `__init__`, like so:
+
+```
+from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayRequirer
+from ops.charm import CharmBase
+
+class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
+    def __init__(...):
+        ...
+        self.pushgateway_provider = PrometheusPushgatewayProvider(
+            self, "push-endpoint", self._endpoint
+        )
+```
+
+The relation name when instantiating PrometheusPushgatewayProvider defaults to `push-endpoint`,
+you can pass a different one if used other name in `metadata.yaml`.
+
+
+## Requierer side of the relation
 
 To get started using the library, you just need to fetch the library using `charmcraft`.
 
@@ -94,7 +140,7 @@ class PrometheusPushgatewayProvider(Object):
     use this library to integrate with the Prometheus Pushgateway.
     """
 
-    def __init__(self, charm: CharmBase, relation_name: str, endpoint: str = "http://127.0.0.1:9091"):
+    def __init__(self, charm: CharmBase, relation_name: str = "push-endpoint", endpoint: str = "http://127.0.0.1:9091"):
         """Construct the interface for the Prometheus Pushgateway Provider side of the relation.
 
         Args:
