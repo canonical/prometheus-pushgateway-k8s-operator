@@ -21,21 +21,21 @@ CHARMLIB_PATH = Path("lib") / "charms" / "prometheus_pushgateway_k8s" / "v0" / "
 class Prometheus:
     """Utility to get information from a Prometheus service."""
 
-    def __init__(self, host: str):
-        self.base_url = f"http://{host}:9090"
+    def __init__(self, host: str, scheme: str = "http"):
+        self.base_url = f"{scheme}://{host}:9090"
 
     async def is_ready(self) -> bool:
         """Send a GET request to check readiness."""
         url = f"{self.base_url}/-/ready"
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
+            async with session.get(url, ssl=False) as response:
                 return response.status == 200
 
     async def labels(self) -> List[str]:
         """Send a GET request to get labels."""
         url = f"{self.base_url}/api/v1/label/__name__/values"
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
+            async with session.get(url, ssl=False) as response:
                 result = await response.json()
         return result["data"] if result["status"] == "success" else []
 
@@ -177,7 +177,7 @@ async def test_prometheus_ca_integration(
         ops_test.model.add_relation(f"{tester_name}:pushgateway", f"{APP_NAME}:push-endpoint"),
     )
     logger.info("Relations issued")
-
+    await asyncio.sleep(100)
     await ops_test.model.wait_for_idle(apps=apps, status="active")
     logger.info("All services related")
 
@@ -190,11 +190,11 @@ async def test_prometheus_ca_integration(
     assert result["ok"] == "True", result
     logger.info("Metric sent to the Pushgateway")
 
-    for i in range(20):
-        labels = await prometheus.labels()
-        if test_metric in labels:
-            logger.info("Metric shown in Prometheus")
-            break
-        await asyncio.sleep(5)
+    await asyncio.sleep(100)
+    prometheus = Prometheus(host, scheme="https")
+    labels = await prometheus.labels()
+
+    if test_metric in labels:
+        logger.info("Metric shown in Prometheus")
     else:
         pytest.fail("Metric didn't get to Prometheus")
