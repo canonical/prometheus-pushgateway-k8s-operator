@@ -161,7 +161,7 @@ def test_requirer_sendmetric_ok(
     related_requirer, name, value, expected_body, verify_ssl, empty_ssl_context
 ):
     """The metric was sent ok."""
-    expected_url = TEST_URL + "metrics/job/testjob"
+    expected_url = TEST_URL + "metrics/job/default"
     fake_resp = response.addinfourl(io.BytesIO(), {}, expected_url, code=200)
 
     with patch("ssl.create_default_context", return_value=empty_ssl_context):
@@ -174,16 +174,16 @@ def test_requirer_sendmetric_ok(
 
 def test_requirer_sendmetric_error_raised(related_requirer):
     """Error raised because the metric was not sent ok."""
-    expected_url = TEST_URL + "metrics/job/testjob"
+    expected_url = TEST_URL + "metrics/job/customjob"
     fake_error = HTTPError(expected_url, 400, "BAD REQUEST", {}, io.BytesIO())
-    with patch("urllib.request.urlopen", side_effect=fake_error):
+    with patch("urllib.request.urlopen", side_effect=fake_error, job_name="customjob"):
         with pytest.raises(HTTPError):
             related_requirer.send_metric("testmetric", 3.14)
 
 
 def test_requirer_sendmetric_error_ignored(related_requirer):
     """The metric was not sent ok but the error is ignored."""
-    expected_url = TEST_URL + "metrics/job/testjob"
+    expected_url = TEST_URL + "metrics/job/default"
     fake_error = HTTPError(expected_url, 400, "BAD REQUEST", {}, io.BytesIO())
     with patch("urllib.request.urlopen", side_effect=fake_error):
         related_requirer.send_metric("testmetric", 3.14, ignore_error=True)

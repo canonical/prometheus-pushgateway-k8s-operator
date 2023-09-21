@@ -140,7 +140,12 @@ class PrometheusPushgatewayProvider(Object):
     use this library to integrate with the Prometheus Pushgateway.
     """
 
-    def __init__(self, charm: CharmBase, relation_name: str = "push-endpoint", endpoint: str = "http://127.0.0.1:9091"):
+    def __init__(
+        self,
+        charm: CharmBase,
+        relation_name: str = "push-endpoint",
+        endpoint: str = "http://127.0.0.1:9091",
+    ):
         """Construct the interface for the Prometheus Pushgateway Provider side of the relation.
 
         Args:
@@ -199,25 +204,29 @@ class PrometheusPushgatewayRequirer(Object):
         if relation is None:
             logger.warning(
                 "Prometheus Pushgateway Requirer not ready: "
-                "charm not related to the Pushgateway service")
+                "charm not related to the Pushgateway service"
+            )
             return None
         raw_data = relation.data[relation.app].get(RELATION_KEY)
         if raw_data is None:
             logger.warning(
-                "Prometheus Pushgateway Requirer not ready: still no data in the relation")
+                "Prometheus Pushgateway Requirer not ready: still no data in the relation"
+            )
             return None
         try:
             data = json.loads(raw_data)
         except json.JSONDecodeError:
             logger.warning(
-                "Prometheus Pushgateway Requirer not ready: corrupt data in the relation")
+                "Prometheus Pushgateway Requirer not ready: corrupt data in the relation"
+            )
             return None
         try:
             url = data["url"]
         except KeyError:
             logger.warning(
                 "Prometheus Pushgateway Requirer not ready: "
-                "missing mandatory keys in relation data")
+                "missing mandatory keys in relation data"
+            )
             return None
         return url
 
@@ -225,8 +234,23 @@ class PrometheusPushgatewayRequirer(Object):
         """Return if the service is ready to send metrics."""
         return self._pushgateway_url is not None
 
-    def send_metric(self, name: str, value: Union[float, int], ignore_error: bool = False, verify_ssl: bool = True):
-        """Send a metric to the Pushgateway."""
+    def send_metric(
+        self,
+        name: str,
+        value: Union[float, int],
+        ignore_error: bool = False,
+        verify_ssl: bool = True,
+        job_name: str = "default",
+    ):
+        """Send a metric to the Pushgateway.
+
+        Args:
+            name: the name of the metric.
+            value: the value of the metric.
+            ignore_error: raise or not error while performing the request.
+            verify_ssl: verify ssl certificate in the request.
+            job_name: name of the job for the current metric.
+        """
         # This currently follows the "simple API" for the case of one metric
         # without labels, as indicated here:
         #    https://github.com/prometheus/pushgateway#api
@@ -241,7 +265,7 @@ class PrometheusPushgatewayRequirer(Object):
             raise ValueError("The metric value must be an integer or float number.")
 
         payload = f"{name} {value}\n".encode("ascii")
-        post_url = pushgateway_url + "metrics/job/testjob"
+        post_url = f"{pushgateway_url}metrics/job/{job_name}"
         ctx = ssl.create_default_context()
         if not verify_ssl:
             ctx.check_hostname = False
