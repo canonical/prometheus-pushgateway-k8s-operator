@@ -5,6 +5,7 @@
 
 import io
 import json
+import ssl
 from unittest.mock import patch
 from urllib import response
 from urllib.error import HTTPError
@@ -48,7 +49,12 @@ def test_provider_relation(pushgateway_harness):
     provider = pushgateway_harness.charm.pushgateway_provider
     relation_id = pushgateway_harness.add_relation("push-endpoint", "remote")
     data = pushgateway_harness.get_relation_data(relation_id, "prometheus-pushgateway-k8s")
-    assert json.loads(data["push-endpoint"]) == {"url": f"http://testhost:{provider.port}/"}
+    assert json.loads(data["push-endpoint"]) == {"url": provider.endpoint}
+
+
+@pytest.fixture()
+def empty_ssl_context():
+    return ssl.create_default_context()
 
 
 def test_requirer_pushgateway_init(testcharm_harness):
@@ -141,34 +147,43 @@ def test_requirer_sendmetric_bad_value_input(related_requirer, value):
 
 
 @pytest.mark.parametrize(
-    "name, value, expected_body",
+    "name, value, expected_body, verify_ssl",
     [
-        ("testmetric", 3.14, b"testmetric 3.14\n"),
-        ("testmetric", 314, b"testmetric 314\n"),
-        ("test_metric", 3.14, b"test_metric 3.14\n"),
+        ("testmetric", 3.14, b"testmetric 3.14\n", False),
+        ("testmetric", 314, b"testmetric 314\n", False),
+        ("test_metric", 3.14, b"test_metric 3.14\n", False),
+        ("testmetric", 3.14, b"testmetric 3.14\n", True),
+        ("testmetric", 314, b"testmetric 314\n", True),
+        ("test_metric", 3.14, b"test_metric 3.14\n", True),
     ],
 )
-def test_requirer_sendmetric_ok(related_requirer, name, value, expected_body):
+def test_requirer_sendmetric_ok(
+    related_requirer, name, value, expected_body, verify_ssl, empty_ssl_context
+):
     """The metric was sent ok."""
-    expected_url = TEST_URL + "metrics/job/testjob"
+    expected_url = TEST_URL + "metrics/job/default"
     fake_resp = response.addinfourl(io.BytesIO(), {}, expected_url, code=200)
-    with patch("urllib.request.urlopen", return_value=fake_resp) as mock_urlopen:
-        related_requirer.send_metric(name, value)
-    mock_urlopen.assert_called_with(expected_url, data=expected_body)
+
+    with patch("ssl.create_default_context", return_value=empty_ssl_context):
+        with patch("urllib.request.urlopen", return_value=fake_resp) as mock_urlopen:
+            related_requirer.send_metric(name, value, verify_ssl)
+        mock_urlopen.assert_called_with(
+            expected_url, data=expected_body, context=empty_ssl_context
+        )
 
 
 def test_requirer_sendmetric_error_raised(related_requirer):
     """Error raised because the metric was not sent ok."""
-    expected_url = TEST_URL + "metrics/job/testjob"
+    expected_url = TEST_URL + "metrics/job/customjob"
     fake_error = HTTPError(expected_url, 400, "BAD REQUEST", {}, io.BytesIO())
-    with patch("urllib.request.urlopen", side_effect=fake_error):
+    with patch("urllib.request.urlopen", side_effect=fake_error, job_name="customjob"):
         with pytest.raises(HTTPError):
             related_requirer.send_metric("testmetric", 3.14)
 
 
 def test_requirer_sendmetric_error_ignored(related_requirer):
     """The metric was not sent ok but the error is ignored."""
-    expected_url = TEST_URL + "metrics/job/testjob"
+    expected_url = TEST_URL + "metrics/job/default"
     fake_error = HTTPError(expected_url, 400, "BAD REQUEST", {}, io.BytesIO())
     with patch("urllib.request.urlopen", side_effect=fake_error):
         related_requirer.send_metric("testmetric", 3.14, ignore_error=True)

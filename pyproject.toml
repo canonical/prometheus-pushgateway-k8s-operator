@@ -52,7 +52,7 @@ no_implicit_optional = false
 
 # Ignore libraries that do not have type hint nor stubs
 [[tool.mypy.overrides]]
-module = ["ops.*", "pytest_operator.*", "requests.packages.urllib3.*"]
+module = ["ops.*", "pytest_operator.*", "requests.packages.urllib3.*", "charms.observability_libs.*", "charms.tls_certificates_interface.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
 

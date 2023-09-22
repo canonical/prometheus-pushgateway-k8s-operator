@@ -56,7 +56,7 @@ class TestingcharmCharm(CharmBase):
             return
 
         try:
-            self.pushgateway_requirer.send_metric(name, value)
+            self.pushgateway_requirer.send_metric(name, value, verify_ssl=False)
         except Exception as exc:
             event.set_results({"ok": False, "error": str(exc)})
         else:
