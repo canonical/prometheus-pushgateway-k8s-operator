@@ -9,17 +9,25 @@
 
 import logging
 import socket
+import typing
+from typing import Any, Dict, List, Optional
+import socket
 from typing import Any, Dict, List, Optional
 
+import yaml
+from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
+from charms.observability_libs.v0.cert_handler import CertHandler
 import yaml
 from charms.observability_libs.v0.cert_handler import CertHandler
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayProvider
+from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
+from ops.charm import CharmBase
 from ops.charm import CharmBase
 from ops.main import main
 from ops.model import ActiveStatus, OpenedPort, WaitingStatus
 from ops.pebble import Layer
-from parse import search  # type: ignore
+from parse import Result, search  # type: ignore
 
 # By default, Pushgateway does not persist metrics, but we can specify a file in which
 # the pushed metrics will be persisted (so that they survive restarts of the Pushgateway)
@@ -68,6 +76,27 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
             key="pushgateway-server-cert",
             peer_relation_name="pushgateway-peers",
             extra_sans_dns=[self._hostname],
+        )
+
+        # Request an ingress url
+        self._ingress = IngressPerAppRequirer(
+            self, port=9091, scheme=lambda: "https" if self._cert_handler.enabled else "http"
+        )
+
+        # add itself as an entry to the catalogue
+        self._catalogue = CatalogueConsumer(
+            self,
+            item=CatalogueItem(
+                "Prometheus Pushgateway",
+                self._ingress.url or self._hostname + ":9091",
+                icon="chart-timeline-variant-shimmer",
+                description="Prometheus Pushgateway UI.",
+            ),
+            refresh_event=[
+                self._ingress.on.ready,
+                self._ingress.on.revoked,
+                self.on.pushgateway_pebble_ready,
+            ],
         )
 
         self.framework.observe(self._cert_handler.on.cert_changed, self._on_server_cert_changed)
@@ -138,6 +167,8 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         if result is None:
             return result
 
+        result = typing.cast(Result, result)
+
         return result[0]
 
     @property
@@ -147,7 +178,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
             and self._cert_handler.cert
             and self._cert_handler.key
             and self._cert_handler.ca
-        )
+        ) is not None
 
     @property
     def _tls_ready(self) -> bool:
@@ -228,7 +259,7 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
             for f, content in certs.items():
                 self._container.push(
                     f,
-                    content,
+                    typing.cast(str, content),
                     make_dirs=True,
                 )
         else:

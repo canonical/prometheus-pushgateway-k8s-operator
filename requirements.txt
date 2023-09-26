@@ -3,3 +3,4 @@ parse
 cosl
 jsonschema
 cryptography
+pydantic

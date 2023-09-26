@@ -44,6 +44,14 @@ requires:
     limit: 1
     description: |
       Obtain a CA and a server certificates for prometheus-gateway to use for TLS.
+  ingress:
+    interface: ingress
+    description: |
+      Obtain an ingress url to access the prometheus pushgateway UI.
+  catalogue:
+    interface: catalogue
+    description: |
+      Publish the prometheus pushgateway UI service to the catalogue.
 
 peers:
   pushgateway-peers:
