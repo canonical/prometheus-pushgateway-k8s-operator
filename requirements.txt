@@ -1,2 +1,6 @@
 ops
 parse
+cosl
+jsonschema
+cryptography
+pydantic

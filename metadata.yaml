@@ -30,10 +30,29 @@ resources:
     type: oci-image
     description: OCI image for Prometheus Pushgateway
     # Included for simplicity in integration tests
-    upstream-source: docker.io/prom/pushgateway:latest
+    upstream-source: ghcr.io/canonical/prometheus-pushgateway:dev
 
 provides:
   metrics-endpoint:
     interface: prometheus_scrape
   push-endpoint:
     interface: pushgateway
+
+requires:
+  certificates:
+    interface: tls-certificates
+    limit: 1
+    description: |
+      Obtain a CA and a server certificates for prometheus-gateway to use for TLS.
+  ingress:
+    interface: ingress
+    description: |
+      Obtain an ingress url to access the prometheus pushgateway UI.
+  catalogue:
+    interface: catalogue
+    description: |
+      Publish the prometheus pushgateway UI service to the catalogue.
+
+peers:
+  pushgateway-peers:
+    interface: pushgateway_peers
