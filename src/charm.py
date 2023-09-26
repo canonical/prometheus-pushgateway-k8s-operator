@@ -11,13 +11,18 @@ import logging
 import socket
 import typing
 from typing import Any, Dict, List, Optional
+import socket
+from typing import Any, Dict, List, Optional
 
 import yaml
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.observability_libs.v0.cert_handler import CertHandler
+import yaml
+from charms.observability_libs.v0.cert_handler import CertHandler
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointProvider
 from charms.prometheus_pushgateway_k8s.v0.pushgateway import PrometheusPushgatewayProvider
 from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer
+from ops.charm import CharmBase
 from ops.charm import CharmBase
 from ops.main import main
 from ops.model import ActiveStatus, OpenedPort, WaitingStatus
@@ -66,7 +71,6 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
             ],
         )
 
-        # TLS integration
         self._cert_handler = CertHandler(
             charm=self,
             key="pushgateway-server-cert",
