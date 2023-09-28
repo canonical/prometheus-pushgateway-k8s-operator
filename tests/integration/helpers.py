@@ -29,3 +29,25 @@ class Prometheus:
             async with session.get(url, ssl=False) as response:
                 result = await response.json()
         return result["data"] if result["status"] == "success" else []
+
+
+class Loki:
+    """Utility to get information from a Loki service."""
+
+    def __init__(self, host: str, scheme: str = "http"):
+        self.base_url = f"{scheme}://{host}:3100"
+
+    async def is_ready(self) -> bool:
+        """Send a GET request to check readiness."""
+        url = f"{self.base_url}/ready"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, ssl=False) as response:
+                return response.status == 200
+
+    async def query(self, query: str):
+        url = f"{self.base_url}/loki/api/v1/query_range"
+        params = {"query": query}
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, ssl=False) as response:
+                result = await response.json()
+        return result["data"]["result"]
