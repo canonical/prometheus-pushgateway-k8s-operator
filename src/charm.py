@@ -123,6 +123,15 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         if self._web_config:
             args.append(f"--web.config.file={WEB_CONFIG_PATH}")
 
+        # TODO: Once Pebble supports log forwarding, we can remove this workaround.
+        #
+        # This workaround let us redirect pushgateway stdout and stderr to a log file
+        # which can be read by Promtail and sent to Loki.
+        #
+        # The command looks like this:
+        #
+        # /bin/sh -c '/bin/pushgateway --persistence.file=/data/metrics 2>&1 | tee /var/log/pushgateway.log'
+        #
         command = [f"/bin/sh -c '{PUSHGATEWAY_BINARY}"] + args + [f"2>&1 | tee {PUSHGATEWAY_LOG}'"]
         return " ".join(command)
 
