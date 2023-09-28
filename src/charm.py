@@ -130,7 +130,8 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         #
         # The command looks like this:
         #
-        # /bin/sh -c '/bin/pushgateway --persistence.file=/data/metrics 2>&1 | tee /var/log/pushgateway.log'
+        # /bin/sh -c '/bin/pushgateway --persistence.file=/data/metrics 2>&1 | tee \
+        #    /var/log/pushgateway.log'
         #
         command = [f"/bin/sh -c '{PUSHGATEWAY_BINARY}"] + args + [f"2>&1 | tee {PUSHGATEWAY_LOG}'"]
         return " ".join(command)
