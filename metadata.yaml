@@ -57,6 +57,9 @@ requires:
     interface: catalogue
     description: |
       Publish the prometheus pushgateway UI service to the catalogue.
+  log-proxy:
+    interface: loki_push_api
+    limit: 1
 
 peers:
   pushgateway-peers:
