@@ -37,7 +37,7 @@ class TestCharm(unittest.TestCase):
                 "pushgateway": {
                     "override": "replace",
                     "summary": "pushgateway process",
-                    "command": "/bin/pushgateway --persistence.file=/data/metrics",
+                    "command": "/bin/sh -c '/bin/pushgateway --persistence.file=/data/metrics 2>&1 | tee /var/log/pushgateway.log'",
                     "startup": "enabled",
                 }
             },
@@ -45,7 +45,7 @@ class TestCharm(unittest.TestCase):
 
         self.harness.container_pebble_ready("pushgateway")
         updated_plan = self.harness.get_container_pebble_plan("pushgateway").to_dict()
-        self.assertEqual(expected_plan, updated_plan)
+        self.assertDictEqual(expected_plan, updated_plan)
         service = self.harness.model.unit.get_container("pushgateway").get_service("pushgateway")
         self.assertTrue(service.is_running())
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
