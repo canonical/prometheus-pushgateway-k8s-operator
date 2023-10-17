@@ -6,10 +6,9 @@
 import unittest
 
 import ops.testing
+from charm import PrometheusPushgatewayK8SOperatorCharm
 from ops.model import ActiveStatus
 from ops.testing import Harness
-
-from charm import PrometheusPushgatewayK8SOperatorCharm
 
 ops.testing.SIMULATE_CAN_CONNECT = True
 
