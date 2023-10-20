@@ -1,6 +1,5 @@
-from scenario import Container, Context, ExecOutput, State
-
 from charm import PUSHGATEWAY_BINARY, PrometheusPushgatewayK8SOperatorCharm
+from scenario import Container, Context, ExecOutput, State
 
 
 def test_parser():
