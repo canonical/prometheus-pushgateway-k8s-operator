@@ -37,22 +37,25 @@ import ipaddress
 import json
 import socket
 from itertools import filterfalse
-from typing import List, Optional, Union
+from typing import List, Optional, Union, cast
 
 try:
-    from charms.tls_certificates_interface.v2.tls_certificates import (  # type: ignore
+    from charms.tls_certificates_interface.v3.tls_certificates import (  # type: ignore
         AllCertificatesInvalidatedEvent,
         CertificateAvailableEvent,
         CertificateExpiringEvent,
         CertificateInvalidatedEvent,
-        TLSCertificatesRequiresV2,
+        TLSCertificatesRequiresV3,
         generate_csr,
         generate_private_key,
     )
-except ImportError:
+except ImportError as e:
     raise ImportError(
-        "charms.tls_certificates_interface.v2.tls_certificates is missing; please get it through charmcraft fetch-lib"
-    )
+        "failed to import charms.tls_certificates_interface.v3.tls_certificates; "
+        "Either the library itself is missing (please get it through charmcraft fetch-lib) "
+        "or one of its dependencies is unmet."
+    ) from e
+
 import logging
 
 from ops.charm import CharmBase, RelationBrokenEvent
@@ -64,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 LIBID = "b5cd5cd580f3428fa5f59a8876dcbe6a"
 LIBAPI = 0
-LIBPATCH = 8
+LIBPATCH = 11
 
 
 def is_ip_address(value: str) -> bool:
@@ -129,7 +132,7 @@ class CertHandler(Object):
         self.peer_relation_name = peer_relation_name
         self.certificates_relation_name = certificates_relation_name
 
-        self.certificates = TLSCertificatesRequiresV2(self.charm, self.certificates_relation_name)
+        self.certificates = TLSCertificatesRequiresV3(self.charm, self.certificates_relation_name)
 
         self.framework.observe(
             self.charm.on.config_changed,
@@ -181,32 +184,39 @@ class CertHandler(Object):
         return self.charm.model.get_relation(self.peer_relation_name, None)
 
     def _on_peer_relation_created(self, _):
-        """Generate the private key and store it in a peer relation."""
-        # We're in "relation-created", so the relation should be there
+        """Generate the CSR if the certificates relation is ready."""
+        self._generate_privkey()
 
-        # Just in case we already have a private key, do not overwrite it.
-        # Not sure how this could happen.
+        # check cert relation is ready
+        if not (self.charm.model.get_relation(self.certificates_relation_name)):
+            # peer relation event happened to fire before tls-certificates events.
+            # Abort, and let the "certificates joined" observer create the CSR.
+            logger.info("certhandler waiting on certificates relation")
+            return
+
+        logger.debug("certhandler has peer and certs relation: proceeding to generate csr")
+        self._generate_csr()
+
+    def _on_certificates_relation_joined(self, _) -> None:
+        """Generate the CSR if the peer relation is ready."""
+        self._generate_privkey()
+
+        # check peer relation is there
+        if not self._peer_relation:
+            # tls-certificates relation event happened to fire before peer events.
+            # Abort, and let the "peer joined" relation create the CSR.
+            logger.info("certhandler waiting on peer relation")
+            return
+
+        logger.debug("certhandler has peer and certs relation: proceeding to generate csr")
+        self._generate_csr()
+
+    def _generate_privkey(self):
+        # Generate priv key unless done already
         # TODO figure out how to go about key rotation.
         if not self._private_key:
             private_key = generate_private_key()
             self._private_key = private_key.decode()
-
-        # Generate CSR here, in case peer events fired after tls-certificate relation events
-        if not (self.charm.model.get_relation(self.certificates_relation_name)):
-            # peer relation event happened to fire before tls-certificates events.
-            # Abort, and let the "certificates joined" observer create the CSR.
-            return
-
-        self._generate_csr()
-
-    def _on_certificates_relation_joined(self, _) -> None:
-        """Generate the CSR and request the certificate creation."""
-        if not self._peer_relation:
-            # tls-certificates relation event happened to fire before peer events.
-            # Abort, and let the "peer joined" relation create the CSR.
-            return
-
-        self._generate_csr()
 
     def _on_config_changed(self, _):
         # FIXME on config changed, the web_external_url may or may not change. But because every
@@ -237,7 +247,12 @@ class CertHandler(Object):
         # In case we already have a csr, do not overwrite it by default.
         if overwrite or renew or not self._csr:
             private_key = self._private_key
-            assert private_key is not None  # for type checker
+            if private_key is None:
+                # FIXME: raise this in a less nested scope by
+                #  generating privkey and csr in the same method.
+                raise RuntimeError(
+                    "private key unset. call _generate_privkey() before you call this method."
+                )
             csr = generate_csr(
                 private_key=private_key.encode(),
                 subject=self.cert_subject,
@@ -267,7 +282,7 @@ class CertHandler(Object):
         if clear_cert:
             self._ca_cert = ""
             self._server_cert = ""
-            self._chain = []
+            self._chain = ""
 
     def _on_certificate_available(self, event: CertificateAvailableEvent) -> None:
         """Get the certificate from the event and store it in a peer relation.
@@ -289,7 +304,7 @@ class CertHandler(Object):
         if event_csr == self._csr:
             self._ca_cert = event.ca
             self._server_cert = event.certificate
-            self._chain = event.chain
+            self._chain = event.chain_as_pem()
             self.on.cert_changed.emit()  # pyright: ignore
 
     @property
@@ -360,21 +375,29 @@ class CertHandler(Object):
         rel.data[self.charm.unit].update({"certificate": value})
 
     @property
-    def _chain(self) -> List[str]:
+    def _chain(self) -> str:
         if self._peer_relation:
-            if chain := self._peer_relation.data[self.charm.unit].get("chain", []):
-                return json.loads(chain)
-        return []
+            if chain := self._peer_relation.data[self.charm.unit].get("chain", ""):
+                chain = json.loads(chain)
+
+                # In a previous version of this lib, chain used to be a list.
+                # Convert the List[str] to str, per
+                # https://github.com/canonical/tls-certificates-interface/pull/141
+                if isinstance(chain, list):
+                    chain = "\n\n".join(reversed(chain))
+
+                return cast(str, chain)
+        return ""
 
     @_chain.setter
-    def _chain(self, value: List[str]):
+    def _chain(self, value: str):
         # Caller must guard. We want the setter to fail loudly. Failure must have a side effect.
         rel = self._peer_relation
         assert rel is not None  # For type checker
         rel.data[self.charm.unit].update({"chain": json.dumps(value)})
 
     @property
-    def chain(self) -> List[str]:
+    def chain(self) -> str:
         """Return the ca chain."""
         return self._chain
 
