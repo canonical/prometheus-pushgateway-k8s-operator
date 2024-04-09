@@ -277,7 +277,7 @@ import json
 import logging
 import uuid
 from contextlib import suppress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from ipaddress import IPv4Address
 from typing import Any, Dict, List, Literal, Optional, Union
 
@@ -286,8 +286,7 @@ from cryptography.hazmat._oid import ExtensionOID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs12
-from cryptography.x509.extensions import Extension, ExtensionNotFound
-from jsonschema import exceptions, validate  # type: ignore[import]
+from jsonschema import exceptions, validate
 from ops.charm import (
     CharmBase,
     CharmEvents,
@@ -298,7 +297,7 @@ from ops.charm import (
 )
 from ops.framework import EventBase, EventSource, Handle, Object
 from ops.jujuversion import JujuVersion
-from ops.model import Relation, SecretNotFoundError
+from ops.model import ModelError, Relation, RelationDataContent, SecretNotFoundError
 
 # The unique Charmhub library identifier, never change it
 LIBID = "afd8c2bccf834997afce12c2706d2ede"
@@ -308,13 +307,13 @@ LIBAPI = 2
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 16
+LIBPATCH = 28
 
 PYDEPS = ["cryptography", "jsonschema"]
 
 REQUIRER_JSON_SCHEMA = {
     "$schema": "http://json-schema.org/draft-04/schema#",
-    "$id": "https://canonical.github.io/charm-relation-interfaces/tls_certificates/v2/schemas/requirer.json",  # noqa: E501
+    "$id": "https://canonical.github.io/charm-relation-interfaces/interfaces/tls_certificates/v1/schemas/requirer.json",
     "type": "object",
     "title": "`tls_certificates` requirer root schema",
     "description": "The `tls_certificates` root schema comprises the entire requirer databag for this interface.",  # noqa: E501
@@ -335,7 +334,10 @@ REQUIRER_JSON_SCHEMA = {
             "type": "array",
             "items": {
                 "type": "object",
-                "properties": {"certificate_signing_request": {"type": "string"}},
+                "properties": {
+                    "certificate_signing_request": {"type": "string"},
+                    "ca": {"type": "boolean"},
+                },
                 "required": ["certificate_signing_request"],
             },
         }
@@ -346,7 +348,7 @@ REQUIRER_JSON_SCHEMA = {
 
 PROVIDER_JSON_SCHEMA = {
     "$schema": "http://json-schema.org/draft-04/schema#",
-    "$id": "https://canonical.github.io/charm-relation-interfaces/tls_certificates/v2/schemas/provider.json",  # noqa: E501
+    "$id": "https://canonical.github.io/charm-relation-interfaces/interfaces/tls_certificates/v1/schemas/provider.json",
     "type": "object",
     "title": "`tls_certificates` provider root schema",
     "description": "The `tls_certificates` root schema comprises the entire provider databag for this interface.",  # noqa: E501
@@ -438,7 +440,7 @@ class CertificateAvailableEvent(EventBase):
         self.chain = chain
 
     def snapshot(self) -> dict:
-        """Returns snapshot."""
+        """Return snapshot."""
         return {
             "certificate": self.certificate,
             "certificate_signing_request": self.certificate_signing_request,
@@ -447,7 +449,7 @@ class CertificateAvailableEvent(EventBase):
         }
 
     def restore(self, snapshot: dict):
-        """Restores snapshot."""
+        """Restore snapshot."""
         self.certificate = snapshot["certificate"]
         self.certificate_signing_request = snapshot["certificate_signing_request"]
         self.ca = snapshot["ca"]
@@ -471,11 +473,11 @@ class CertificateExpiringEvent(EventBase):
         self.expiry = expiry
 
     def snapshot(self) -> dict:
-        """Returns snapshot."""
+        """Return snapshot."""
         return {"certificate": self.certificate, "expiry": self.expiry}
 
     def restore(self, snapshot: dict):
-        """Restores snapshot."""
+        """Restore snapshot."""
         self.certificate = snapshot["certificate"]
         self.expiry = snapshot["expiry"]
 
@@ -500,7 +502,7 @@ class CertificateInvalidatedEvent(EventBase):
         self.chain = chain
 
     def snapshot(self) -> dict:
-        """Returns snapshot."""
+        """Return snapshot."""
         return {
             "reason": self.reason,
             "certificate_signing_request": self.certificate_signing_request,
@@ -510,7 +512,7 @@ class CertificateInvalidatedEvent(EventBase):
         }
 
     def restore(self, snapshot: dict):
-        """Restores snapshot."""
+        """Restore snapshot."""
         self.reason = snapshot["reason"]
         self.certificate_signing_request = snapshot["certificate_signing_request"]
         self.certificate = snapshot["certificate"]
@@ -525,33 +527,42 @@ class AllCertificatesInvalidatedEvent(EventBase):
         super().__init__(handle)
 
     def snapshot(self) -> dict:
-        """Returns snapshot."""
+        """Return snapshot."""
         return {}
 
     def restore(self, snapshot: dict):
-        """Restores snapshot."""
+        """Restore snapshot."""
         pass
 
 
 class CertificateCreationRequestEvent(EventBase):
     """Charm Event triggered when a TLS certificate is required."""
 
-    def __init__(self, handle: Handle, certificate_signing_request: str, relation_id: int):
+    def __init__(
+        self,
+        handle: Handle,
+        certificate_signing_request: str,
+        relation_id: int,
+        is_ca: bool = False,
+    ):
         super().__init__(handle)
         self.certificate_signing_request = certificate_signing_request
         self.relation_id = relation_id
+        self.is_ca = is_ca
 
     def snapshot(self) -> dict:
-        """Returns snapshot."""
+        """Return snapshot."""
         return {
             "certificate_signing_request": self.certificate_signing_request,
             "relation_id": self.relation_id,
+            "is_ca": self.is_ca,
         }
 
     def restore(self, snapshot: dict):
-        """Restores snapshot."""
+        """Restore snapshot."""
         self.certificate_signing_request = snapshot["certificate_signing_request"]
         self.relation_id = snapshot["relation_id"]
+        self.is_ca = snapshot["is_ca"]
 
 
 class CertificateRevocationRequestEvent(EventBase):
@@ -572,7 +583,7 @@ class CertificateRevocationRequestEvent(EventBase):
         self.chain = chain
 
     def snapshot(self) -> dict:
-        """Returns snapshot."""
+        """Return snapshot."""
         return {
             "certificate": self.certificate,
             "certificate_signing_request": self.certificate_signing_request,
@@ -581,31 +592,70 @@ class CertificateRevocationRequestEvent(EventBase):
         }
 
     def restore(self, snapshot: dict):
-        """Restores snapshot."""
+        """Restore snapshot."""
         self.certificate = snapshot["certificate"]
         self.certificate_signing_request = snapshot["certificate_signing_request"]
         self.ca = snapshot["ca"]
         self.chain = snapshot["chain"]
 
 
-def _load_relation_data(raw_relation_data: dict) -> dict:
-    """Loads relation data from the relation data bag.
+def _load_relation_data(relation_data_content: RelationDataContent) -> dict:
+    """Load relation data from the relation data bag.
 
     Json loads all data.
 
     Args:
-        raw_relation_data: Relation data from the databag
+        relation_data_content: Relation data from the databag
 
     Returns:
         dict: Relation data in dict format.
     """
-    certificate_data = dict()
-    for key in raw_relation_data:
-        try:
-            certificate_data[key] = json.loads(raw_relation_data[key])
-        except (json.decoder.JSONDecodeError, TypeError):
-            certificate_data[key] = raw_relation_data[key]
+    certificate_data = {}
+    try:
+        for key in relation_data_content:
+            try:
+                certificate_data[key] = json.loads(relation_data_content[key])
+            except (json.decoder.JSONDecodeError, TypeError):
+                certificate_data[key] = relation_data_content[key]
+    except ModelError:
+        pass
     return certificate_data
+
+
+def _get_closest_future_time(
+    expiry_notification_time: datetime, expiry_time: datetime
+) -> datetime:
+    """Return expiry_notification_time if not in the past, otherwise return expiry_time.
+
+    Args:
+        expiry_notification_time (datetime): Notification time of impending expiration
+        expiry_time (datetime): Expiration time
+
+    Returns:
+        datetime: expiry_notification_time if not in the past, expiry_time otherwise
+    """
+    return (
+        expiry_notification_time
+        if datetime.now(timezone.utc) < expiry_notification_time
+        else expiry_time
+    )
+
+
+def _get_certificate_expiry_time(certificate: str) -> Optional[datetime]:
+    """Extract expiry time from a certificate string.
+
+    Args:
+        certificate (str): x509 certificate as a string
+
+    Returns:
+        Optional[datetime]: Expiry datetime or None
+    """
+    try:
+        certificate_object = x509.load_pem_x509_certificate(data=certificate.encode())
+        return certificate_object.not_valid_after_utc
+    except ValueError:
+        logger.warning("Could not load certificate.")
+        return None
 
 
 def generate_ca(
@@ -615,11 +665,11 @@ def generate_ca(
     validity: int = 365,
     country: str = "US",
 ) -> bytes:
-    """Generates a CA Certificate.
+    """Generate a CA Certificate.
 
     Args:
         private_key (bytes): Private key
-        subject (str): Certificate subject
+        subject (str): Common Name that can be an IP or a Full Qualified Domain Name (FQDN).
         private_key_password (bytes): Private key password
         validity (int): Certificate validity time (in days)
         country (str): Certificate Issuing country
@@ -630,7 +680,7 @@ def generate_ca(
     private_key_object = serialization.load_pem_private_key(
         private_key, password=private_key_password
     )
-    subject = issuer = x509.Name(
+    subject_name = x509.Name(
         [
             x509.NameAttribute(x509.NameOID.COUNTRY_NAME, country),
             x509.NameAttribute(x509.NameOID.COMMON_NAME, subject),
@@ -653,12 +703,12 @@ def generate_ca(
     )
     cert = (
         x509.CertificateBuilder()
-        .subject_name(subject)
-        .issuer_name(issuer)
+        .subject_name(subject_name)
+        .issuer_name(subject_name)
         .public_key(private_key_object.public_key())  # type: ignore[arg-type]
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.utcnow())
-        .not_valid_after(datetime.utcnow() + timedelta(days=validity))
+        .not_valid_before(datetime.now(timezone.utc))
+        .not_valid_after(datetime.now(timezone.utc) + timedelta(days=validity))
         .add_extension(x509.SubjectKeyIdentifier(digest=subject_identifier), critical=False)
         .add_extension(
             x509.AuthorityKeyIdentifier(
@@ -678,6 +728,105 @@ def generate_ca(
     return cert.public_bytes(serialization.Encoding.PEM)
 
 
+def get_certificate_extensions(
+    authority_key_identifier: bytes,
+    csr: x509.CertificateSigningRequest,
+    alt_names: Optional[List[str]],
+    is_ca: bool,
+) -> List[x509.Extension]:
+    """Generate a list of certificate extensions from a CSR and other known information.
+
+    Args:
+        authority_key_identifier (bytes): Authority key identifier
+        csr (x509.CertificateSigningRequest): CSR
+        alt_names (list): List of alt names to put on cert - prefer putting SANs in CSR
+        is_ca (bool): Whether the certificate is a CA certificate
+
+    Returns:
+        List[x509.Extension]: List of extensions
+    """
+    cert_extensions_list: List[x509.Extension] = [
+        x509.Extension(
+            oid=ExtensionOID.AUTHORITY_KEY_IDENTIFIER,
+            value=x509.AuthorityKeyIdentifier(
+                key_identifier=authority_key_identifier,
+                authority_cert_issuer=None,
+                authority_cert_serial_number=None,
+            ),
+            critical=False,
+        ),
+        x509.Extension(
+            oid=ExtensionOID.SUBJECT_KEY_IDENTIFIER,
+            value=x509.SubjectKeyIdentifier.from_public_key(csr.public_key()),
+            critical=False,
+        ),
+        x509.Extension(
+            oid=ExtensionOID.BASIC_CONSTRAINTS,
+            critical=True,
+            value=x509.BasicConstraints(ca=is_ca, path_length=None),
+        ),
+    ]
+
+    sans: List[x509.GeneralName] = []
+    san_alt_names = [x509.DNSName(name) for name in alt_names] if alt_names else []
+    sans.extend(san_alt_names)
+    try:
+        loaded_san_ext = csr.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+        sans.extend(
+            [x509.DNSName(name) for name in loaded_san_ext.value.get_values_for_type(x509.DNSName)]
+        )
+        sans.extend(
+            [x509.IPAddress(ip) for ip in loaded_san_ext.value.get_values_for_type(x509.IPAddress)]
+        )
+        sans.extend(
+            [
+                x509.RegisteredID(oid)
+                for oid in loaded_san_ext.value.get_values_for_type(x509.RegisteredID)
+            ]
+        )
+    except x509.ExtensionNotFound:
+        pass
+
+    if sans:
+        cert_extensions_list.append(
+            x509.Extension(
+                oid=ExtensionOID.SUBJECT_ALTERNATIVE_NAME,
+                critical=False,
+                value=x509.SubjectAlternativeName(sans),
+            )
+        )
+
+    if is_ca:
+        cert_extensions_list.append(
+            x509.Extension(
+                ExtensionOID.KEY_USAGE,
+                critical=True,
+                value=x509.KeyUsage(
+                    digital_signature=False,
+                    content_commitment=False,
+                    key_encipherment=False,
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=True,
+                    crl_sign=True,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+            )
+        )
+
+    existing_oids = {ext.oid for ext in cert_extensions_list}
+    for extension in csr.extensions:
+        if extension.oid == ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
+            continue
+        if extension.oid in existing_oids:
+            logger.warning("Extension %s is managed by the TLS provider, ignoring.", extension.oid)
+            continue
+        cert_extensions_list.append(extension)
+
+    return cert_extensions_list
+
+
 def generate_certificate(
     csr: bytes,
     ca: bytes,
@@ -685,8 +834,9 @@ def generate_certificate(
     ca_key_password: Optional[bytes] = None,
     validity: int = 365,
     alt_names: Optional[List[str]] = None,
+    is_ca: bool = False,
 ) -> bytes:
-    """Generates a TLS certificate based on a CSR.
+    """Generate a TLS certificate based on a CSR.
 
     Args:
         csr (bytes): CSR
@@ -695,6 +845,7 @@ def generate_certificate(
         ca_key_password: CA private key password
         validity (int): Certificate validity (in days)
         alt_names (list): List of alt names to put on cert - prefer putting SANs in CSR
+        is_ca (bool): Whether the certificate is a CA certificate
 
     Returns:
         bytes: Certificate
@@ -711,54 +862,26 @@ def generate_certificate(
         .issuer_name(issuer)
         .public_key(csr_object.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.utcnow())
-        .not_valid_after(datetime.utcnow() + timedelta(days=validity))
-        .add_extension(
-            x509.AuthorityKeyIdentifier(
-                key_identifier=ca_pem.extensions.get_extension_for_class(
-                    x509.SubjectKeyIdentifier
-                ).value.key_identifier,
-                authority_cert_issuer=None,
-                authority_cert_serial_number=None,
-            ),
-            critical=False,
-        )
-        .add_extension(
-            x509.SubjectKeyIdentifier.from_public_key(csr_object.public_key()), critical=False
-        )
-        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=False)
+        .not_valid_before(datetime.now(timezone.utc))
+        .not_valid_after(datetime.now(timezone.utc) + timedelta(days=validity))
     )
-
-    extensions_list = csr_object.extensions
-    san_ext: Optional[x509.Extension] = None
-    if alt_names:
-        full_sans_dns = alt_names.copy()
+    extensions = get_certificate_extensions(
+        authority_key_identifier=ca_pem.extensions.get_extension_for_class(
+            x509.SubjectKeyIdentifier
+        ).value.key_identifier,
+        csr=csr_object,
+        alt_names=alt_names,
+        is_ca=is_ca,
+    )
+    for extension in extensions:
         try:
-            loaded_san_ext = csr_object.extensions.get_extension_for_class(
-                x509.SubjectAlternativeName
+            certificate_builder = certificate_builder.add_extension(
+                extval=extension.value,
+                critical=extension.critical,
             )
-            full_sans_dns.extend(loaded_san_ext.value.get_values_for_type(x509.DNSName))
-        except ExtensionNotFound:
-            pass
-        finally:
-            san_ext = Extension(
-                ExtensionOID.SUBJECT_ALTERNATIVE_NAME,
-                False,
-                x509.SubjectAlternativeName([x509.DNSName(name) for name in full_sans_dns]),
-            )
-            if not extensions_list:
-                extensions_list = x509.Extensions([san_ext])
+        except ValueError as e:
+            logger.warning("Failed to add extension %s: %s", extension.oid, e)
 
-    for extension in extensions_list:
-        if extension.value.oid == ExtensionOID.SUBJECT_ALTERNATIVE_NAME and san_ext:
-            extension = san_ext
-
-        certificate_builder = certificate_builder.add_extension(
-            extension.value,
-            critical=extension.critical,
-        )
-
-    certificate_builder._version = x509.Version.v3
     cert = certificate_builder.sign(private_key, hashes.SHA256())  # type: ignore[arg-type]
     return cert.public_bytes(serialization.Encoding.PEM)
 
@@ -769,7 +892,7 @@ def generate_pfx_package(
     package_password: str,
     private_key_password: Optional[bytes] = None,
 ) -> bytes:
-    """Generates a PFX package to contain the TLS certificate and private key.
+    """Generate a PFX package to contain the TLS certificate and private key.
 
     Args:
         certificate (bytes): TLS certificate
@@ -800,7 +923,7 @@ def generate_private_key(
     key_size: int = 2048,
     public_exponent: int = 65537,
 ) -> bytes:
-    """Generates a private key.
+    """Generate a private key.
 
     Args:
         password (bytes): Password for decrypting the private key
@@ -817,14 +940,16 @@ def generate_private_key(
     key_bytes = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.BestAvailableEncryption(password)
-        if password
-        else serialization.NoEncryption(),
+        encryption_algorithm=(
+            serialization.BestAvailableEncryption(password)
+            if password
+            else serialization.NoEncryption()
+        ),
     )
     return key_bytes
 
 
-def generate_csr(
+def generate_csr(  # noqa: C901
     private_key: bytes,
     subject: str,
     add_unique_id_to_subject_name: bool = True,
@@ -838,11 +963,11 @@ def generate_csr(
     sans_dns: Optional[List[str]] = None,
     additional_critical_extensions: Optional[List] = None,
 ) -> bytes:
-    """Generates a CSR using private key and subject.
+    """Generate a CSR using private key and subject.
 
     Args:
         private_key (bytes): Private key
-        subject (str): CSR Subject.
+        subject (str): CSR Common Name that can be an IP or a Full Qualified Domain Name (FQDN).
         add_unique_id_to_subject_name (bool): Whether a unique ID must be added to the CSR's
             subject name. Always leave to "True" when the CSR is used to request certificates
             using the tls-certificates relation.
@@ -896,6 +1021,38 @@ def generate_csr(
     return signed_certificate.public_bytes(serialization.Encoding.PEM)
 
 
+def csr_matches_certificate(csr: str, cert: str) -> bool:
+    """Check if a CSR matches a certificate.
+
+    Args:
+        csr (str): Certificate Signing Request as a string
+        cert (str): Certificate as a string
+    Returns:
+        bool: True/False depending on whether the CSR matches the certificate.
+    """
+    try:
+        csr_object = x509.load_pem_x509_csr(csr.encode("utf-8"))
+        cert_object = x509.load_pem_x509_certificate(cert.encode("utf-8"))
+
+        if csr_object.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        ) != cert_object.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        ):
+            return False
+        if (
+            csr_object.public_key().public_numbers().n  # type: ignore[union-attr]
+            != cert_object.public_key().public_numbers().n  # type: ignore[union-attr]
+        ):
+            return False
+    except ValueError:
+        logger.warning("Could not load certificate or CSR.")
+        return False
+    return True
+
+
 class CertificatesProviderCharmEvents(CharmEvents):
     """List of events that the TLS Certificates provider charm can leverage."""
 
@@ -915,7 +1072,7 @@ class CertificatesRequirerCharmEvents(CharmEvents):
 class TLSCertificatesProvidesV2(Object):
     """TLS certificates provider class to be instantiated by TLS certificates providers."""
 
-    on = CertificatesProviderCharmEvents()
+    on = CertificatesProviderCharmEvents()  # type: ignore[reportAssignmentType]
 
     def __init__(self, charm: CharmBase, relationship_name: str):
         super().__init__(charm, relationship_name)
@@ -926,12 +1083,12 @@ class TLSCertificatesProvidesV2(Object):
         self.relationship_name = relationship_name
 
     def _load_app_relation_data(self, relation: Relation) -> dict:
-        """Loads relation data from the application relation data bag.
+        """Load relation data from the application relation data bag.
 
         Json loads all data.
 
         Args:
-            relation_object: Relation data from the application databag
+            relation: Relation data from the application databag
 
         Returns:
             dict: Relation data in dict format.
@@ -949,7 +1106,7 @@ class TLSCertificatesProvidesV2(Object):
         ca: str,
         chain: List[str],
     ) -> None:
-        """Adds certificate to relation data.
+        """Add certificate to relation data.
 
         Args:
             relation_id (int): Relation id
@@ -990,7 +1147,7 @@ class TLSCertificatesProvidesV2(Object):
         certificate: Optional[str] = None,
         certificate_signing_request: Optional[str] = None,
     ) -> None:
-        """Removes certificate from a given relation based on user provided certificate or csr.
+        """Remove certificate from a given relation based on user provided certificate or csr.
 
         Args:
             relation_id (int): Relation id
@@ -1023,7 +1180,7 @@ class TLSCertificatesProvidesV2(Object):
 
     @staticmethod
     def _relation_data_is_valid(certificates_data: dict) -> bool:
-        """Uses JSON schema validator to validate relation data content.
+        """Use JSON schema validator to validate relation data content.
 
         Args:
             certificates_data (dict): Certificate data dictionary as retrieved from relation data.
@@ -1038,7 +1195,7 @@ class TLSCertificatesProvidesV2(Object):
             return False
 
     def revoke_all_certificates(self) -> None:
-        """Revokes all certificates of this provider.
+        """Revoke all certificates of this provider.
 
         This method is meant to be used when the Root CA has changed.
         """
@@ -1057,7 +1214,7 @@ class TLSCertificatesProvidesV2(Object):
         chain: List[str],
         relation_id: int,
     ) -> None:
-        """Adds certificates to relation data.
+        """Add certificates to relation data.
 
         Args:
             certificate (str): Certificate
@@ -1089,7 +1246,7 @@ class TLSCertificatesProvidesV2(Object):
         )
 
     def remove_certificate(self, certificate: str) -> None:
-        """Removes a given certificate from relation data.
+        """Remove a given certificate from relation data.
 
         Args:
             certificate (str): TLS Certificate
@@ -1106,7 +1263,7 @@ class TLSCertificatesProvidesV2(Object):
     def get_issued_certificates(
         self, relation_id: Optional[int] = None
     ) -> Dict[str, List[Dict[str, str]]]:
-        """Returns a dictionary of issued certificates.
+        """Return a dictionary of issued certificates.
 
         It returns certificates from all relations if relation_id is not specified.
         Certificates are returned per application name and CSR.
@@ -1141,7 +1298,7 @@ class TLSCertificatesProvidesV2(Object):
         return certificates
 
     def _on_relation_changed(self, event: RelationChangedEvent) -> None:
-        """Handler triggered on relation changed event.
+        """Handle relation changed event.
 
         Looks at the relation data and either emits:
         - certificate request event: If the unit relation data contains a CSR for which
@@ -1171,20 +1328,24 @@ class TLSCertificatesProvidesV2(Object):
             certificate_creation_request["certificate_signing_request"]
             for certificate_creation_request in provider_certificates
         ]
-        requirer_unit_csrs = [
-            certificate_creation_request["certificate_signing_request"]
+        requirer_unit_certificate_requests = [
+            {
+                "csr": certificate_creation_request["certificate_signing_request"],
+                "is_ca": certificate_creation_request.get("ca", False),
+            }
             for certificate_creation_request in requirer_csrs
         ]
-        for certificate_signing_request in requirer_unit_csrs:
-            if certificate_signing_request not in provider_csrs:
+        for certificate_request in requirer_unit_certificate_requests:
+            if certificate_request["csr"] not in provider_csrs:
                 self.on.certificate_creation_request.emit(
-                    certificate_signing_request=certificate_signing_request,
+                    certificate_signing_request=certificate_request["csr"],
                     relation_id=event.relation.id,
+                    is_ca=certificate_request["is_ca"],
                 )
         self._revoke_certificates_for_which_no_csr_exists(relation_id=event.relation.id)
 
     def _revoke_certificates_for_which_no_csr_exists(self, relation_id: int) -> None:
-        """Revokes certificates for which no unit has a CSR.
+        """Revoke certificates for which no unit has a CSR.
 
         Goes through all generated certificates and compare against the list of CSRs for all units
         of a given relationship.
@@ -1217,12 +1378,24 @@ class TLSCertificatesProvidesV2(Object):
                 )
                 self.remove_certificate(certificate=certificate["certificate"])
 
-    def get_requirer_csrs_with_no_certs(
+    def get_outstanding_certificate_requests(
         self, relation_id: Optional[int] = None
     ) -> List[Dict[str, Union[int, str, List[Dict[str, str]]]]]:
-        """Filters the requirer's units csrs.
+        """Return CSR's for which no certificate has been issued.
 
-        Keeps the ones for which no certificate was provided.
+        Example return: [
+            {
+                "relation_id": 0,
+                "application_name": "tls-certificates-requirer",
+                "unit_name": "tls-certificates-requirer/0",
+                "unit_csrs": [
+                    {
+                        "certificate_signing_request": "-----BEGIN CERTIFICATE REQUEST-----...",
+                        "is_ca": false
+                    }
+                ]
+            }
+        ]
 
         Args:
             relation_id (int): Relation id
@@ -1239,6 +1412,7 @@ class TLSCertificatesProvidesV2(Object):
                 if not self.certificate_issued_for_csr(
                     app_name=unit_csr_mapping["application_name"],  # type: ignore[arg-type]
                     csr=csr["certificate_signing_request"],  # type: ignore[index]
+                    relation_id=relation_id,
                 ):
                     csrs_without_certs.append(csr)
             if csrs_without_certs:
@@ -1249,7 +1423,7 @@ class TLSCertificatesProvidesV2(Object):
     def get_requirer_csrs(
         self, relation_id: Optional[int] = None
     ) -> List[Dict[str, Union[int, str, List[Dict[str, str]]]]]:
-        """Returns a list of requirers' CSRs grouped by unit.
+        """Return a list of requirers' CSRs grouped by unit.
 
         It returns CSRs from all relations if relation_id is not specified.
         CSRs are returned per relation id, application name and unit name.
@@ -1285,17 +1459,21 @@ class TLSCertificatesProvidesV2(Object):
                 )
         return unit_csr_mappings
 
-    def certificate_issued_for_csr(self, app_name: str, csr: str) -> bool:
-        """Checks whether a certificate has been issued for a given CSR.
+    def certificate_issued_for_csr(
+        self, app_name: str, csr: str, relation_id: Optional[int]
+    ) -> bool:
+        """Check whether a certificate has been issued for a given CSR.
 
         Args:
             app_name (str): Application name that the CSR belongs to.
             csr (str): Certificate Signing Request.
-
+            relation_id (Optional[int]): Relation ID
         Returns:
             bool: True/False depending on whether a certificate has been issued for the given CSR.
         """
-        issued_certificates_per_csr = self.get_issued_certificates()[app_name]
+        issued_certificates_per_csr = self.get_issued_certificates(relation_id=relation_id)[
+            app_name
+        ]
         for issued_pair in issued_certificates_per_csr:
             if "csr" in issued_pair and issued_pair["csr"] == csr:
                 return csr_matches_certificate(csr, issued_pair["certificate"])
@@ -1305,7 +1483,7 @@ class TLSCertificatesProvidesV2(Object):
 class TLSCertificatesRequiresV2(Object):
     """TLS certificates requirer class to be instantiated by TLS certificates requirers."""
 
-    on = CertificatesRequirerCharmEvents()
+    on = CertificatesRequirerCharmEvents()  # type: ignore[reportAssignmentType]
 
     def __init__(
         self,
@@ -1313,7 +1491,7 @@ class TLSCertificatesRequiresV2(Object):
         relationship_name: str,
         expiry_notification_time: int = 168,
     ):
-        """Generates/use private key and observes relation changed event.
+        """Generate/use private key and observes relation changed event.
 
         Args:
             charm: Charm object
@@ -1337,8 +1515,17 @@ class TLSCertificatesRequiresV2(Object):
             self.framework.observe(charm.on.update_status, self._on_update_status)
 
     @property
-    def _requirer_csrs(self) -> List[Dict[str, str]]:
-        """Returns list of requirer's CSRs from relation data."""
+    def _requirer_csrs(self) -> List[Dict[str, Union[bool, str]]]:
+        """Return list of requirer's CSRs from relation unit data.
+
+        Example:
+            [
+                {
+                    "certificate_signing_request": "-----BEGIN CERTIFICATE REQUEST-----...",
+                    "ca": false
+                }
+            ]
+        """
         relation = self.model.get_relation(self.relationship_name)
         if not relation:
             raise RuntimeError(f"Relation {self.relationship_name} does not exist")
@@ -1347,7 +1534,7 @@ class TLSCertificatesRequiresV2(Object):
 
     @property
     def _provider_certificates(self) -> List[Dict[str, str]]:
-        """Returns list of certificates from the provider's relation data."""
+        """Return list of certificates from the provider's relation data."""
         relation = self.model.get_relation(self.relationship_name)
         if not relation:
             logger.debug("No relation: %s", self.relationship_name)
@@ -1361,11 +1548,12 @@ class TLSCertificatesRequiresV2(Object):
             return []
         return provider_relation_data.get("certificates", [])
 
-    def _add_requirer_csr(self, csr: str) -> None:
-        """Adds CSR to relation data.
+    def _add_requirer_csr(self, csr: str, is_ca: bool) -> None:
+        """Add CSR to relation data.
 
         Args:
             csr (str): Certificate Signing Request
+            is_ca (bool): Whether the certificate is a CA certificate
 
         Returns:
             None
@@ -1376,7 +1564,10 @@ class TLSCertificatesRequiresV2(Object):
                 f"Relation {self.relationship_name} does not exist - "
                 f"The certificate request can't be completed"
             )
-        new_csr_dict = {"certificate_signing_request": csr}
+        new_csr_dict: Dict[str, Union[bool, str]] = {
+            "certificate_signing_request": csr,
+            "ca": is_ca,
+        }
         if new_csr_dict in self._requirer_csrs:
             logger.info("CSR already in relation data - Doing nothing")
             return
@@ -1385,7 +1576,7 @@ class TLSCertificatesRequiresV2(Object):
         relation.data[self.model.unit]["certificate_signing_requests"] = json.dumps(requirer_csrs)
 
     def _remove_requirer_csr(self, csr: str) -> None:
-        """Removes CSR from relation data.
+        """Remove CSR from relation data.
 
         Args:
             csr (str): Certificate signing request
@@ -1400,18 +1591,22 @@ class TLSCertificatesRequiresV2(Object):
                 f"The certificate request can't be completed"
             )
         requirer_csrs = copy.deepcopy(self._requirer_csrs)
-        csr_dict = {"certificate_signing_request": csr}
-        if csr_dict not in requirer_csrs:
-            logger.info("CSR not in relation data - Doing nothing")
+        if not requirer_csrs:
+            logger.info("No CSRs in relation data - Doing nothing")
             return
-        requirer_csrs.remove(csr_dict)
+        for requirer_csr in requirer_csrs:
+            if requirer_csr["certificate_signing_request"] == csr:
+                requirer_csrs.remove(requirer_csr)
         relation.data[self.model.unit]["certificate_signing_requests"] = json.dumps(requirer_csrs)
 
-    def request_certificate_creation(self, certificate_signing_request: bytes) -> None:
+    def request_certificate_creation(
+        self, certificate_signing_request: bytes, is_ca: bool = False
+    ) -> None:
         """Request TLS certificate to provider charm.
 
         Args:
             certificate_signing_request (bytes): Certificate Signing Request
+            is_ca (bool): Whether the certificate is a CA certificate
 
         Returns:
             None
@@ -1422,11 +1617,11 @@ class TLSCertificatesRequiresV2(Object):
                 f"Relation {self.relationship_name} does not exist - "
                 f"The certificate request can't be completed"
             )
-        self._add_requirer_csr(certificate_signing_request.decode().strip())
+        self._add_requirer_csr(certificate_signing_request.decode().strip(), is_ca=is_ca)
         logger.info("Certificate request sent to provider")
 
     def request_certificate_revocation(self, certificate_signing_request: bytes) -> None:
-        """Removes CSR from relation data.
+        """Remove CSR from relation data.
 
         The provider of this relation is then expected to remove certificates associated to this
         CSR from the relation data as well and emit a request_certificate_revocation event for the
@@ -1444,7 +1639,7 @@ class TLSCertificatesRequiresV2(Object):
     def request_certificate_renewal(
         self, old_certificate_signing_request: bytes, new_certificate_signing_request: bytes
     ) -> None:
-        """Renews certificate.
+        """Renew certificate.
 
         Removes old CSR from relation data and adds new one.
 
@@ -1466,9 +1661,95 @@ class TLSCertificatesRequiresV2(Object):
         )
         logger.info("Certificate renewal request completed.")
 
+    def get_assigned_certificates(self) -> List[Dict[str, str]]:
+        """Get a list of certificates that were assigned to this unit.
+
+        Returns:
+            List of certificates. For example:
+            [
+                {
+                    "ca": "-----BEGIN CERTIFICATE-----...",
+                    "chain": [
+                        "-----BEGIN CERTIFICATE-----..."
+                    ],
+                    "certificate": "-----BEGIN CERTIFICATE-----...",
+                    "certificate_signing_request": "-----BEGIN CERTIFICATE REQUEST-----...",
+                }
+            ]
+        """
+        final_list = []
+        for csr in self.get_certificate_signing_requests(fulfilled_only=True):
+            assert isinstance(csr["certificate_signing_request"], str)
+            if cert := self._find_certificate_in_relation_data(csr["certificate_signing_request"]):
+                final_list.append(cert)
+        return final_list
+
+    def get_expiring_certificates(self) -> List[Dict[str, str]]:
+        """Get a list of certificates that were assigned to this unit that are expiring or expired.
+
+        Returns:
+            List of certificates. For example:
+            [
+                {
+                    "ca": "-----BEGIN CERTIFICATE-----...",
+                    "chain": [
+                        "-----BEGIN CERTIFICATE-----..."
+                    ],
+                    "certificate": "-----BEGIN CERTIFICATE-----...",
+                    "certificate_signing_request": "-----BEGIN CERTIFICATE REQUEST-----...",
+                }
+            ]
+        """
+        final_list = []
+        for csr in self.get_certificate_signing_requests(fulfilled_only=True):
+            assert isinstance(csr["certificate_signing_request"], str)
+            if cert := self._find_certificate_in_relation_data(csr["certificate_signing_request"]):
+                expiry_time = _get_certificate_expiry_time(cert["certificate"])
+                if not expiry_time:
+                    continue
+                expiry_notification_time = expiry_time - timedelta(
+                    hours=self.expiry_notification_time
+                )
+                if datetime.now(timezone.utc) > expiry_notification_time:
+                    final_list.append(cert)
+        return final_list
+
+    def get_certificate_signing_requests(
+        self,
+        fulfilled_only: bool = False,
+        unfulfilled_only: bool = False,
+    ) -> List[Dict[str, Union[bool, str]]]:
+        """Get the list of CSR's that were sent to the provider.
+
+        You can choose to get only the CSR's that have a certificate assigned or only the CSR's
+          that don't.
+
+        Args:
+            fulfilled_only (bool): This option will discard CSRs that don't have certificates yet.
+            unfulfilled_only (bool): This option will discard CSRs that have certificates signed.
+
+        Returns:
+            List of CSR dictionaries. For example:
+            [
+                {
+                    "certificate_signing_request": "-----BEGIN CERTIFICATE REQUEST-----...",
+                    "ca": false
+                }
+            ]
+        """
+        final_list = []
+        for csr in self._requirer_csrs:
+            assert isinstance(csr["certificate_signing_request"], str)
+            cert = self._find_certificate_in_relation_data(csr["certificate_signing_request"])
+            if (unfulfilled_only and cert) or (fulfilled_only and not cert):
+                continue
+            final_list.append(csr)
+
+        return final_list
+
     @staticmethod
     def _relation_data_is_valid(certificates_data: dict) -> bool:
-        """Checks whether relation data is valid based on json schema.
+        """Check whether relation data is valid based on json schema.
 
         Args:
             certificates_data: Certificate data in dict format.
@@ -1483,7 +1764,7 @@ class TLSCertificatesRequiresV2(Object):
             return False
 
     def _on_relation_changed(self, event: RelationChangedEvent) -> None:
-        """Handler triggered on relation changed events.
+        """Handle relation changed event.
 
         Goes through all providers certificates that match a requested CSR.
 
@@ -1568,7 +1849,7 @@ class TLSCertificatesRequiresV2(Object):
         return _get_closest_future_time(expiry_notification_time, expiry_time)
 
     def _on_relation_broken(self, event: RelationBrokenEvent) -> None:
-        """Handler triggered on relation broken event.
+        """Handle relation broken event.
 
         Emitting `all_certificates_invalidated` from `relation-broken` rather
         than `relation-departed` since certs are stored in app data.
@@ -1582,7 +1863,7 @@ class TLSCertificatesRequiresV2(Object):
         self.on.all_certificates_invalidated.emit()
 
     def _on_secret_expired(self, event: SecretExpiredEvent) -> None:
-        """Triggered when a certificate is set to expire.
+        """Handle secret expired event.
 
         Loads the certificate from the secret, and will emit 1 of 2
         events.
@@ -1612,7 +1893,7 @@ class TLSCertificatesRequiresV2(Object):
             event.secret.remove_all_revisions()
             return
 
-        if datetime.utcnow() < expiry_time:
+        if datetime.now(timezone.utc) < expiry_time:
             logger.warning("Certificate almost expired")
             self.on.certificate_expiring.emit(
                 certificate=certificate_dict["certificate"],
@@ -1634,7 +1915,7 @@ class TLSCertificatesRequiresV2(Object):
             event.secret.remove_all_revisions()
 
     def _find_certificate_in_relation_data(self, csr: str) -> Optional[Dict[str, Any]]:
-        """Returns the certificate that match the given CSR."""
+        """Return the certificate that match the given CSR."""
         for certificate_dict in self._provider_certificates:
             if certificate_dict["certificate_signing_request"] != csr:
                 continue
@@ -1642,7 +1923,7 @@ class TLSCertificatesRequiresV2(Object):
         return None
 
     def _on_update_status(self, event: UpdateStatusEvent) -> None:
-        """Triggered on update status event.
+        """Handle update status event.
 
         Goes through each certificate in the "certificates" relation and checks their expiry date.
         If they are close to expire (<7 days), emits a CertificateExpiringEvent event and if
@@ -1658,7 +1939,7 @@ class TLSCertificatesRequiresV2(Object):
             expiry_time = _get_certificate_expiry_time(certificate_dict["certificate"])
             if not expiry_time:
                 continue
-            time_difference = expiry_time - datetime.utcnow()
+            time_difference = expiry_time - datetime.now(timezone.utc)
             if time_difference.total_seconds() < 0:
                 logger.warning("Certificate is expired")
                 self.on.certificate_invalidated.emit(
@@ -1676,68 +1957,3 @@ class TLSCertificatesRequiresV2(Object):
                     certificate=certificate_dict["certificate"],
                     expiry=expiry_time.isoformat(),
                 )
-
-
-def csr_matches_certificate(csr: str, cert: str) -> bool:
-    """Check if a CSR matches a certificate.
-
-    expects to get the original string representations.
-
-    Args:
-        csr (str): Certificate Signing Request
-        cert (str): Certificate
-    Returns:
-        bool: True/False depending on whether the CSR matches the certificate.
-    """
-    try:
-        csr_object = x509.load_pem_x509_csr(csr.encode("utf-8"))
-        cert_object = x509.load_pem_x509_certificate(cert.encode("utf-8"))
-
-        if csr_object.public_key().public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
-        ) != cert_object.public_key().public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
-        ):
-            return False
-        if csr_object.subject != cert_object.subject:
-            return False
-    except ValueError:
-        logger.warning("Could not load certificate or CSR.")
-        return False
-    return True
-
-
-def _get_closest_future_time(
-    expiry_notification_time: datetime, expiry_time: datetime
-) -> datetime:
-    """Return expiry_notification_time if not in the past, otherwise return expiry_time.
-
-    Args:
-        expiry_notification_time (datetime): Notification time of impending expiration
-        expiry_time (datetime): Expiration time
-
-    Returns:
-        datetime: expiry_notification_time if not in the past, expiry_time otherwise
-    """
-    return (
-        expiry_notification_time if datetime.utcnow() < expiry_notification_time else expiry_time
-    )
-
-
-def _get_certificate_expiry_time(certificate: str) -> Optional[datetime]:
-    """Extract expiry time from a certificate string.
-
-    Args:
-        certificate (str): x509 certificate as a string
-
-    Returns:
-        Optional[datetime]: Expiry datetime or None
-    """
-    try:
-        certificate_object = x509.load_pem_x509_certificate(data=certificate.encode())
-        return certificate_object.not_valid_after
-    except ValueError:
-        logger.warning("Could not load certificate.")
-        return None
