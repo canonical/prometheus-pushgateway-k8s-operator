@@ -23,6 +23,7 @@ async def test_loki_integration(
     pushgateway_charm: Path,
 ):
     """Validate the integration between the Pushgateway and Loki."""
+    assert ops_test.model
     loki_app_name = "loki"
     apps = [APP_NAME, loki_app_name]
 

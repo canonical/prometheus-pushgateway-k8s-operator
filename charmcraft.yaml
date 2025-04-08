@@ -1,17 +1,90 @@
-# This file configures Charmcraft.
-# See https://juju.is/docs/sdk/charmcraft-config for guidance.
-
+# Copyright 2025 Canonical Ltd.
+# See LICENSE file for licensing details.
+name: prometheus-pushgateway-k8s
 type: charm
-bases:
-  - build-on:
-    - name: ubuntu
-      channel: "22.04"
-    run-on:
-    - name: ubuntu
-      channel: "22.04"
+summary: Prometheus Pushgateway for Kubernetes clusters.
+description: |
+  Prometheus Pushgateway is a service that allows ephemeral and batch jobs to expose their metrics to Prometheus.
+
+  This charm deploys and operates Prometheus Pushgateway on Kubernetes clusters
+
+links:
+  documentation: https://discourse.charmhub.io/t/prometheus-pushgateway-operator-k8s-docs-index/11980
+  website: https://charmhub.io/prometheus-pushgateway-k8s
+  source: https://github.com/canonical/prometheus-pushgateway-k8s-operator
+  issues: https://github.com/canonical/prometheus-pushgateway-k8s-operator/issues
+
+assumes:
+  - k8s-api
+
+platforms:
+  ubuntu@22.04:amd64:
+  ubuntu@24.04:amd64:
+
 parts:
   charm:
-    charm-binary-python-packages:
-      - jsonschema
-      - cryptography
-      - pydantic<3
+    source: .
+    plugin: uv
+    build-packages: [git]
+    build-snaps: [astral-uv]
+    override-build: |
+      craftctl default
+      git describe --always > $CRAFT_PART_INSTALL/version
+
+containers:
+  pushgateway:
+    resource: pushgateway-image
+    mounts:
+      - storage: pushgateway-store
+        location: /data
+
+resources:
+  pushgateway-image:
+    type: oci-image
+    description: OCI image for Prometheus Pushgateway
+    upstream-source: ubuntu/prometheus-pushgateway:1.11-24.04
+
+storage:
+  pushgateway-store:
+    type: filesystem
+    description: Mount point in which Prometheus Pushgateway will store data
+
+provides:
+  metrics-endpoint:
+    interface: prometheus_scrape
+    optional: true
+    description: |
+      Integration to have the Prometheus Pushgateway self-monitoring metrics scraped.
+  push-endpoint:
+    interface: pushgateway
+    optional: true
+    description: |
+      Integration to push the generated metrics to a Prometheus charm.
+
+requires:
+  certificates:
+    interface: tls-certificates
+    optional: true
+    limit: 1
+    description: |
+      Obtain a CA and a server certificates for prometheus-gateway to use for TLS.
+  ingress:
+    interface: ingress
+    optional: true
+    description: |
+      Obtain an ingress url to access the prometheus pushgateway UI.
+  catalogue:
+    interface: catalogue
+    optional: true
+    description: |
+      Publish the prometheus pushgateway UI service to the catalogue.
+  log-proxy:
+    interface: loki_push_api
+    optional: true
+    limit: 1
+    description: |
+      Receives Loki's push api endpoint address to push logs to, and forwards charm's built-in alert rules to Loki.
+
+peers:
+  pushgateway-peers:
+    interface: pushgateway_peers

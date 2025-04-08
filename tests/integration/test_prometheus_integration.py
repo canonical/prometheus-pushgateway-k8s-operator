@@ -24,6 +24,7 @@ async def test_prometheus_integration(
     tester_charm: Path,
 ):
     """Validate the integration between the Pushgateway and Prometheous."""
+    assert ops_test.model
     prometheus_app_name = "prometheus"
     tester_name = "testingcharm"
     apps = [APP_NAME, prometheus_app_name, tester_name]
@@ -75,7 +76,9 @@ async def test_prometheus_integration(
     logger.info("All services related")
 
     # run the action to push a metric
-    tester_unit = ops_test.model.applications[tester_name].units[0]
+    tester_application = ops_test.model.applications[tester_name]
+    assert tester_application
+    tester_unit = tester_application.units[0]
     test_metric = "some_testing_metric"
     action = await tester_unit.run_action("send-metric", name=test_metric, value="3.14")
     result = (await action.wait()).results
