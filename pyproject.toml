@@ -29,7 +29,7 @@ dev = [
   "coverage[toml]",
   "ops-scenario",
   # Integration
-  "juju<=3.3.0,>=3.0",
+  "juju~=3.1.0",
   "pytest-operator",
   "aiohttp",
   "sh",
