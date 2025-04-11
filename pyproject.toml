@@ -6,7 +6,7 @@ version = "0.0"
 requires-python = "~=3.8"
 
 dependencies = [
-  "ops",
+  "ops>=2.2",
   "parse",
   "cosl",
   "jsonschema",
@@ -21,16 +21,13 @@ dev = [
   "codespell",
   # Static
   "pyright",
-  "types-dataclasses",
-  "types-PyYAML",
-  "types-requests",
   # Unit
   "pytest",
   "coverage[toml]",
-  "ops-scenario",
+  "ops[testing]",
   # Integration
-  "juju~=3.1.0",
-  "pytest-operator",
+  "juju~=3.3.0",
+  "pytest-operator>=0.39",
   "aiohttp",
   "sh",
 ]
