@@ -11,7 +11,7 @@ from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
 
-METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
+METADATA = yaml.safe_load(Path("./charmcraft.yaml").read_text())
 APP_NAME = METADATA["name"]
 
 
@@ -21,6 +21,7 @@ async def test_build_and_deploy(ops_test: OpsTest, pushgateway_charm: Path):
 
     Assert on the unit status before any relations/configurations take place.
     """
+    assert ops_test.model
     image = METADATA["resources"]["pushgateway-image"]["upstream-source"]
     resources = {"pushgateway-image": image}
 

@@ -3,6 +3,7 @@
 
 import functools
 import logging
+import os
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -39,6 +40,9 @@ def timed_memoizer(func):
 @timed_memoizer
 async def pushgateway_charm(ops_test: OpsTest) -> Path:
     """Prometheus Pushgateway charm used for integration testing."""
+    if charm_file := os.environ.get("CHARM_PATH"):
+        return Path(charm_file)
+
     charm = await ops_test.build_charm(".")
     return charm
 
@@ -52,7 +56,7 @@ async def tester_charm(ops_test: OpsTest) -> Path:
     dest_charmlib = testingcharm_path / CHARMLIB_PATH
     shutil.rmtree(dest_charmlib.parent, ignore_errors=True)
     dest_charmlib.parent.mkdir(parents=True)
-    dest_charmlib.hardlink_to(CHARMLIB_PATH)
+    dest_charmlib.hardlink_to(CHARMLIB_PATH)  # type: ignore
 
     clean_cmd = ["charmcraft", "clean", "-p", testingcharm_path]
     await ops_test.run(*clean_cmd)
