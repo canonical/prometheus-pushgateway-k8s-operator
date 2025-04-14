@@ -47,7 +47,7 @@ async def test_prometheus_integration_tls(
         ops_test.model.deploy(
             "self-signed-certificates",
             application_name=ca_name,
-            channel="edge",
+            channel="latest/edge",
             trust=True,
         ),
         ops_test.model.deploy(

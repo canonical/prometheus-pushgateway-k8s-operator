@@ -1,5 +1,6 @@
+from ops.testing import Container, Context, Exec, State
+
 from charm import PUSHGATEWAY_BINARY, PrometheusPushgatewayK8SOperatorCharm
-from scenario import Container, Context, ExecOutput, State
 
 
 def test_parser():
@@ -16,7 +17,7 @@ pushgateway, version 42.42.42 (branch: HEAD, revision: 7afc96cfc3b20e56968ff30ee
     container = Container(
         "pushgateway",
         can_connect=True,
-        exec_mock={(PUSHGATEWAY_BINARY, "--version"): ExecOutput(0, stderr=mock_stdout)},
+        execs={Exec((PUSHGATEWAY_BINARY, "--version"), return_code=0, stderr=mock_stdout)},
     )
-    state_out = ctx.run("update-status", state=State(containers=[container]))
+    state_out = ctx.run(ctx.on.update_status(), state=State(containers=[container]))
     assert state_out.workload_version == "42.42.42"

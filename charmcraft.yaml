@@ -14,3 +14,4 @@ parts:
     charm-binary-python-packages:
       - jsonschema
       - cryptography
+      - pydantic<3
