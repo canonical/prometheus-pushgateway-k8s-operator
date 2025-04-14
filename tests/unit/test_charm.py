@@ -6,11 +6,12 @@
 import unittest
 
 import ops.testing
-from charm import PrometheusPushgatewayK8SOperatorCharm
 from ops.model import ActiveStatus
 from ops.testing import Harness
 
-ops.testing.SIMULATE_CAN_CONNECT = True
+from charm import PrometheusPushgatewayK8SOperatorCharm
+
+ops.testing.SIMULATE_CAN_CONNECT = True  # type: ignore
 
 VERSION_OUTPUT = """
 pushgateway, version 1.5.1 (branch: HEAD, revision: 7afc96cfc3b20e56968ff30eea22b70e)

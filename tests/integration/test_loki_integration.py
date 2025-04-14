@@ -12,7 +12,7 @@ from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
 
-METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
+METADATA = yaml.safe_load(Path("./charmcraft.yaml").read_text())
 APP_NAME = METADATA["name"]
 CHARMLIB_PATH = Path("lib") / "charms" / "prometheus_pushgateway_k8s" / "v0" / "pushgateway.py"
 
@@ -23,6 +23,7 @@ async def test_loki_integration(
     pushgateway_charm: Path,
 ):
     """Validate the integration between the Pushgateway and Loki."""
+    assert ops_test.model
     loki_app_name = "loki"
     apps = [APP_NAME, loki_app_name]
 
