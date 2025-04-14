@@ -26,7 +26,7 @@ dev = [
   "coverage[toml]",
   "ops[testing]",
   # Integration
-  "juju~=3.3.0",
+  "juju>=3.5",
   "pytest-operator>=0.39",
   "aiohttp",
   "sh",
@@ -48,14 +48,14 @@ lint.select = ["E", "W", "F", "C", "N", "R", "D", "I001"]
 # Ignore D107 Missing docstring in __init__
 lint.ignore = ["E501", "D107", "N818", "RET504"]
 # D100, D101, D102, D103: Ignore missing docstrings in tests
-lint.per-file-ignores = {"tests/*" = ["D100","D101","D102","D103"]}
+lint.per-file-ignores = { "tests/*" = ["D100", "D101", "D102", "D103"] }
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
 # Static analysis tools configuration
 [tool.pyright]
-extraPaths = ["src","lib"]
+extraPaths = ["src", "lib"]
 pythonVersion = "3.8"
 pythonPlatform = "All"
 
