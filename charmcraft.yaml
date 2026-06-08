@@ -83,6 +83,18 @@ requires:
     limit: 1
     description: |
       Receives Loki's push api endpoint address to push logs to, and forwards charm's built-in alert rules to Loki.
+  charm-tracing:
+    interface: tracing
+    optional: true
+    limit: 1
+    description: |
+      Enables sending charm hook traces to a distributed tracing backend such as Tempo.
+  receive-ca-cert:
+    interface: certificate_transfer
+    optional: true
+    limit: 1
+    description: |
+      Receives a CA certificate used to validate TLS connections to the charm tracing backend.
 
 peers:
   pushgateway-peers:
