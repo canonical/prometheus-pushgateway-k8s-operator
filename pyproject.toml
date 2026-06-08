@@ -6,7 +6,7 @@ version = "0.0"
 requires-python = "~=3.8"
 
 dependencies = [
-  "ops>=2.2",
+  "ops[tracing]>=2.2",
   "parse",
   "cosl",
   "jsonschema",
@@ -25,11 +25,16 @@ dev = [
   "pytest",
   "coverage[toml]",
   "ops[testing]",
-  # Integration
+  # Integration (pytest-operator suite)
   "juju>=3.5",
   "pytest-operator>=0.39",
   "aiohttp",
   "sh",
+  # Integration (jubilant suite — charm tracing)
+  "jubilant",
+  "pytest-jubilant",
+  "requests",
+  "tenacity",
 ]
 
 # Testing tools configuration

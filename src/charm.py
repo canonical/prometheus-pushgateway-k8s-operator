@@ -12,6 +12,7 @@ import socket
 import typing
 from typing import Any, Dict, List, Optional
 
+import ops_tracing
 import yaml
 from charms.catalogue_k8s.v0.catalogue import CatalogueConsumer, CatalogueItem
 from charms.loki_k8s.v0.loki_push_api import LogProxyConsumer
@@ -98,6 +99,13 @@ class PrometheusPushgatewayK8SOperatorCharm(CharmBase):
         # Enable log forwarding for Loki and other charms that implement loki_push_api
         self._logging = LogProxyConsumer(
             self, relation_name="log-proxy", log_files=[PUSHGATEWAY_LOG]
+        )
+
+        # Emit charm hook traces to a tracing backend (e.g. Tempo); both relations are optional.
+        self.charm_tracing = ops_tracing.Tracing(
+            self,
+            tracing_relation_name="charm-tracing",
+            ca_relation_name="receive-ca-cert",
         )
 
         self.framework.observe(self._cert_handler.on.cert_changed, self._on_server_cert_changed)
