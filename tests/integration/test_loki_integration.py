@@ -39,7 +39,7 @@ async def test_loki_integration(
         ops_test.model.deploy(
             "loki-k8s",
             application_name=loki_app_name,
-            channel="stable",
+            channel="dev/edge",
             trust=True,
         ),
     )
