@@ -18,7 +18,7 @@ assumes:
   - k8s-api
 
 platforms:
-  ubuntu@24.04:amd64:
+  ubuntu@26.04:amd64:
 
 parts:
   charm:
@@ -41,7 +41,7 @@ resources:
   pushgateway-image:
     type: oci-image
     description: OCI image for Prometheus Pushgateway
-    upstream-source: ubuntu/prometheus-pushgateway@sha256:af152b9966e9f30325f9d3cc66ab54e563caa1b179967460bac36053f67b07e9  # renovate: oci-image tag: 1.11-24.04
+    upstream-source: ubuntu/prometheus-pushgateway@sha256:524e748e1e3daf6355ff9e409bfa8021e7181c7f3d6f18f9394c1ffd0693d1b0  # renovate: oci-image tag: 1.11-26.04_edge
 
 storage:
   pushgateway-store:
