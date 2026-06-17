@@ -42,7 +42,7 @@ async def test_prometheus_integration_tls(
         ops_test.model.deploy(
             "prometheus-k8s",
             application_name=prometheus_app_name,
-            channel="edge",
+            channel="2/edge",
             trust=True,
         ),
         ops_test.model.deploy(
@@ -76,7 +76,7 @@ async def test_prometheus_integration_tls(
             f"{APP_NAME}:metrics-endpoint", f"{prometheus_app_name}:metrics-endpoint"
         ),
         ops_test.model.add_relation(APP_NAME, ca_name),
-        ops_test.model.add_relation(prometheus_app_name, ca_name),
+        ops_test.model.add_relation(f"{prometheus_app_name}:certificates", ca_name),
         ops_test.model.add_relation(f"{tester_name}:pushgateway", f"{APP_NAME}:push-endpoint"),
     )
     logger.info("Relations issued")
