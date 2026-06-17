@@ -42,7 +42,7 @@ async def test_prometheus_integration_tls(
         ops_test.model.deploy(
             "prometheus-k8s",
             application_name=prometheus_app_name,
-            channel="edge",
+            channel="2/edge",
             trust=True,
         ),
         ops_test.model.deploy(
