@@ -41,7 +41,7 @@ resources:
   pushgateway-image:
     type: oci-image
     description: OCI image for Prometheus Pushgateway
-    upstream-source: ubuntu/prometheus-pushgateway@sha256:524e748e1e3daf6355ff9e409bfa8021e7181c7f3d6f18f9394c1ffd0693d1b0  # renovate: oci-image tag: 1.11-26.04_edge
+    upstream-source: ubuntu/prometheus-pushgateway@sha256:97a3728da7b4cf55b248506f7e43b365483fd37829ecf7e2dd557685d98fcd63  # renovate: oci-image tag: 1.11-26.04_edge
 
 storage:
   pushgateway-store:
